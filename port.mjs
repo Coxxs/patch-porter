@@ -19,7 +19,7 @@ const searchModesDefault = [
 /**
  * @param {Buffer} buffer Buffer to search
  * @param {Buffer} search Buffer to search for
- * @returns {Array<number>} Array of offsets
+ * @returns {Array<number>} Array of indexes
  */
 function indexOfAll(buffer, search) {
   const result = []
