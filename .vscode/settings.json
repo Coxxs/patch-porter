@@ -1,0 +1,9 @@
+{
+  "editor.tabSize": 2,
+  "github.copilot.enable": {
+    "javascript": true,
+    "yaml": false,
+    "plaintext": false,
+    "markdown": false
+  }
+}

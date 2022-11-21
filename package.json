@@ -1,0 +1,19 @@
+{
+  "name": "patch-porter",
+  "version": "0.1.0",
+  "description": ".pchtxt porting tool",
+  "main": "port.mjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Coxxs/patch-porter.git"
+  },
+  "author": "Coxxs",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Coxxs/patch-porter/issues"
+  },
+  "homepage": "https://github.com/Coxxs/patch-porter#readme"
+}
