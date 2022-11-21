@@ -85,7 +85,7 @@ export function findNewOffset(fileOld, fileNew, address, searchModes = searchMod
  * @param {Array<object>} searchModes 
  * @returns {string} new pchtxt
  */
-export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes) {
+export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModesDefault) {
   const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
   const output = []
 
