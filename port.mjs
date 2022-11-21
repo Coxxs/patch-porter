@@ -98,7 +98,7 @@ export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModes
       continue
     }
 
-    if (match = line.match(/^(?<prefix>(?:\\\s+)?)(?<address>[0-9a-fA-F]{2,10})\s(?<suffix>.+)$/)) {
+    if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{2,10})\s(?<suffix>.+)$/)) {
       const oldAddressStr = match.groups.address
       const oldAddress = parseInt(oldAddressStr, 16)
       const prefix = match.groups.prefix
