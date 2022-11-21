@@ -9,7 +9,7 @@ let fileNew = await fs.readFile('1.2.1.decompressed')
 let oldPchtxt = await fs.readFile('patch_1.2.0.pchtxt', 'utf8')
 let newPchtxt = updatePchtxt(fileOld, fileNew, oldPchtxt)
 
-fs.writeFile('patch_1.2.1.pchtxt', newPchtxt)
+await fs.writeFile('patch_1.2.1.pchtxt', newPchtxt)
 
 // 3. Use Node.js to run this script: node example.mjs
 // 4. Search for "[!]" in new pchtxt to find errors
