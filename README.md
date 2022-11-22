@@ -1,5 +1,7 @@
 # patch-porter
 
+A simple .pchtxt porting tool.
+
 ## Usage
 
 1. Install [Node.js](https://nodejs.org/), then install `patch-porter` using npm:
