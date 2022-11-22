@@ -39,9 +39,6 @@ const argv = yargs
 (async () => {
   const { portPchtxt } = await import('../port.mjs')
 
-  let fileOld = await fs.readFile(argv.from)
-  let fileNew = await fs.readFile(argv.to)
-
   if (argv.from == argv.to) {
     console.error('Error: From and to paths are the same')
     return
@@ -56,6 +53,9 @@ const argv = yargs
     console.error('Error: Output pchtxt already exists, use -w to overwrite')
     return
   }
+
+  let fileOld = await fs.readFile(argv.from)
+  let fileNew = await fs.readFile(argv.to)
 
   let pchtxtOld = await fs.readFile(argv.input, 'utf8')
   let pchtxtNew = await portPchtxt(fileOld, fileNew, pchtxtOld)
