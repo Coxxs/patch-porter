@@ -14,6 +14,11 @@ const searchModesDefault = [
   { start: 32, end: -32, length: 8, step: -4, range: 0x80000 },
   { start: 32, end: -32, length: 12, step: -4, range: 0x80000 },
   { start: 32, end: -32, length: 16, step: -4, range: 0x80000 },
+
+  { start: 32, end: -32, length: 8, step: -4, range: null },
+  { start: 32, end: -32, length: 12, step: -4, range: null },
+  { start: 32, end: -32, length: 16, step: -4, range: null },
+  { start: 32, end: -32, length: 20, step: -4, range: null },
 ]
 
 /**
@@ -120,17 +125,18 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, searchModes = searchM
       continue
     }
 
-    if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{2,10})\s(?<suffix>.+)$/)) {
+    if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s(?<suffix>.+)$/)) {
       const oldAddressStr = match.groups.address
       const oldAddress = parseInt(oldAddressStr, 16)
       const prefix = match.groups.prefix
       const suffix = match.groups.suffix
-      const newAddress = portAddress(fileOld, fileNew, oldAddress + offset, searchModes) - offset
+      let newAddress = portAddress(fileOld, fileNew, oldAddress + offset, searchModes)
       if (newAddress === false) {
         console.error(`Failed to find new address for ${oldAddressStr}`)
         output.push(`${line} // [x] Failed to find new address in new file`)
         continue
       }
+      newAddress = newAddress - offset
       const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
       const delta = newAddress - oldAddress
       console.log(`Address updated: 0x${oldAddressStr} -> 0x${newAddressStr} (${delta})`)
