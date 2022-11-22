@@ -3,6 +3,9 @@
   "version": "0.3.1",
   "description": ".pchtxt porting tool",
   "main": "port.mjs",
+  "bin": {
+    "patch-porter": "./bin/port.js"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,5 +18,8 @@
   "bugs": {
     "url": "https://github.com/Coxxs/patch-porter/issues"
   },
-  "homepage": "https://github.com/Coxxs/patch-porter#readme"
+  "homepage": "https://github.com/Coxxs/patch-porter#readme",
+  "dependencies": {
+    "yargs": "^17.6.2"
+  }
 }

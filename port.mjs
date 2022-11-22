@@ -50,7 +50,7 @@ function indexOfAll(buffer, search) {
  * @param {Array<object>} searchModes
  * @returns {number | false} delta
  */
-export function findNewOffset(fileOld, fileNew, address, searchModes = searchModesDefault) {
+export function portAddress(fileOld, fileNew, address, searchModes = searchModesDefault) {
   if (!Number.isInteger(address)) {
     throw new Error('address must be an integer')
   }
@@ -83,7 +83,7 @@ export function findNewOffset(fileOld, fileNew, address, searchModes = searchMod
       if (indexs.length > 1) continue
       let delta = indexs[0] + startOffset - ptr
       // console.log(`Found with mode ${JSON.stringify(searchMode)}, delta ${delta}`)
-      return delta
+      return address + delta
     }
   }
   return false
@@ -96,7 +96,7 @@ export function findNewOffset(fileOld, fileNew, address, searchModes = searchMod
  * @param {Array<object>} searchModes 
  * @returns {string} new pchtxt
  */
-export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModesDefault) {
+export function portPchtxt(fileOld, fileNew, pchtxt, searchModes = searchModesDefault) {
   const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
   const output = []
 
@@ -125,14 +125,14 @@ export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModes
       const oldAddress = parseInt(oldAddressStr, 16)
       const prefix = match.groups.prefix
       const suffix = match.groups.suffix
-      const delta = findNewOffset(fileOld, fileNew, oldAddress + offset, searchModes)
-      if (delta === false) {
+      const newAddress = portAddress(fileOld, fileNew, oldAddress + offset, searchModes) - offset
+      if (newAddress === false) {
         console.error(`Failed to find new address for ${oldAddressStr}`)
         output.push(`${line} // [x] Failed to find new address in new file`)
         continue
       }
-      const newAddress = oldAddress + delta
       const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
+      const delta = newAddress - oldAddress
       console.log(`Address updated: 0x${oldAddressStr} -> 0x${newAddressStr} (${delta})`)
       output.push(`${prefix}${newAddressStr} ${suffix}`)
       continue
