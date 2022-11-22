@@ -13,7 +13,7 @@ A simple `.pchtxt` porting tool.
 4. Done!
 
 ## Tips
-- Please keep `@flag offset_shift ...` in your pchtxt to help the script to find the correct address
+- Please keep `@flag offset_shift ...` in your pchtxt to help `patch-porter` finding the correct address
 - After porting, search for `[x]` in new pchtxt to find errors
 - `patch-porter` does not currently update the assembly code, so some patch may still need to be updated manually
 
