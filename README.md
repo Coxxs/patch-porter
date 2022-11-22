@@ -4,9 +4,9 @@ A simple `.pchtxt` porting tool.
 
 ## Usage
 
-1. Install [Node.js](https://nodejs.org/), then install `patch-porter` using npm:
+1. Install [Node.js](https://nodejs.org), then install `patch-porter` using npm:
     - `npm install -g patch-porter`
-2. Decompress NSO using hactool:
+2. Decompress NSO using [hactool](https://github.com/SciresM/hactool):
     - `hactool -t nso main --uncompressed main.raw`
 3. Port your pchtxt:
     - `patch-porter --from=mainA.raw --to=mainB.raw --input=A.pchtxt --output=B.pchtxt`
