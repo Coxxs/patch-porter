@@ -7,9 +7,9 @@ A simple .pchtxt porting tool.
 1. Install [Node.js](https://nodejs.org/), then install `patch-porter` using npm:
     - `npm install -g patch-porter`
 2. Decompress NSO using hactool:
-    - `hactool -t nso main --uncompressed main.bin`
+    - `hactool -t nso main --uncompressed main.raw`
 3. Port your pchtxt:
-    - `patch-porter --from=mainA.bin --to=mainB.bin --input=A.pchtxt --output=B.pchtxt`
+    - `patch-porter --from=mainA.raw --to=mainB.raw --input=A.pchtxt --output=B.pchtxt`
 4. Done!
 
 ## Tips
@@ -23,8 +23,8 @@ A simple .pchtxt porting tool.
 import { promises as fs } from 'fs'
 import { portPchtxt } from 'patch-porter'
 
-let fileA = await fs.readFile('mainA.bin')
-let fileB = await fs.readFile('mainB.bin')
+let fileA = await fs.readFile('mainA.raw')
+let fileB = await fs.readFile('mainB.raw')
 let pchtxtA = await fs.readFile('A.pchtxt', 'utf8')
 
 let pchtxtB = await portPchtxt(fileA, fileB, pchtxtA)
