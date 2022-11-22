@@ -17,6 +17,16 @@ const searchModesDefault = [
 ]
 
 /**
+ * @param {Buffer} buffer NSO file
+ * @returns {string} nsobid
+ */
+function getNsobid(buffer) {
+  let nsobid = buffer.subarray(0x40, 0x40 + 0x20).toString('hex').toUpperCase()
+  nsobid = nsobid.replace(/(00)*$/, '')
+  return nsobid
+}
+
+/**
  * @param {Buffer} buffer Buffer to search
  * @param {Buffer} search Buffer to search for
  * @returns {Array<number>} Array of indexes
@@ -34,7 +44,6 @@ function indexOfAll(buffer, search) {
 }
 
 /**
- * 
  * @param {Buffer} fileOld
  * @param {Buffer} fileNew
  * @param {number} address 
@@ -42,6 +51,9 @@ function indexOfAll(buffer, search) {
  * @returns {number | false} delta
  */
 export function findNewOffset(fileOld, fileNew, address, searchModes = searchModesDefault) {
+  if (!Number.isInteger(address)) {
+    throw new Error('address must be an integer')
+  }
   for (const searchMode of searchModes) {
     const { start, end, length, step, range } = searchMode
     if (start == end && step == 0) {
@@ -78,7 +90,6 @@ export function findNewOffset(fileOld, fileNew, address, searchModes = searchMod
 }
 
 /**
- * 
  * @param {Buffer} fileOld 
  * @param {Buffer} fileNew 
  * @param {string} pchtxt 
@@ -92,6 +103,17 @@ export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModes
   let offset = 0
   for (const line of lines) {
     let match
+    if (match = line.match(/^@nsobid-(?<nsobid>[0-9a-fA-F]+)$/)) {
+      let pchtxtNsobid = match.groups.nsobid.toUpperCase()
+      let oldNsobid = getNsobid(fileOld)
+      let newNsobid = getNsobid(fileNew)
+      if (oldNsobid !== pchtxtNsobid) {
+        throw new Error(`nsobid mismatch: ${oldNsobid} (nso) != ${pchtxtNsobid} (pchtxt)`)
+      }
+      output.push(`@nsobid-${newNsobid}`)
+      continue
+    }
+
     if (match = line.match(/^@flag\s+offset_shift\s+0x(?<offset>[0-9a-fA-F]+)$/)) {
       offset = parseInt(match.groups.offset, 16)
       output.push(line)
@@ -106,7 +128,7 @@ export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModes
       const delta = findNewOffset(fileOld, fileNew, oldAddress + offset, searchModes)
       if (delta === false) {
         console.error(`Failed to find new address for ${oldAddressStr}`)
-        output.push(`${line} // [!] Failed to find new address in new file`)
+        output.push(`${line} // [x] Failed to find new address in new file`)
         continue
       }
       const newAddress = oldAddress + delta
@@ -121,4 +143,3 @@ export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModes
 
   return output.join('\n')
 }
-
