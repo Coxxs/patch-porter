@@ -3,17 +3,25 @@ function dec2hex(number, length) {
 }
 
 const searchModesDefault = [
-  { start: 16, end: -16, length: 8, step: -4, range: 0x1000 },
+  // { start: 16, end: -16, length: 8, step: -4, range: 0x1000 }, // Commented to reduce false positives
   { start: 16, end: -16, length: 12, step: -4, range: 0x1000 },
   { start: 16, end: -16, length: 16, step: -4, range: 0x1000 },
+  { start: 16, end: -16, length: 20, step: -4, range: 0x1000 },
 
   { start: 16, end: -16, length: 8, step: -4, range: 0x80000 },
   { start: 16, end: -16, length: 12, step: -4, range: 0x80000 },
   { start: 16, end: -16, length: 16, step: -4, range: 0x80000 },
+  { start: 16, end: -16, length: 20, step: -4, range: 0x80000 },
 
-  { start: 32, end: -32, length: 8, step: -4, range: 0x80000 },
-  { start: 32, end: -32, length: 12, step: -4, range: 0x80000 },
-  { start: 32, end: -32, length: 16, step: -4, range: 0x80000 },
+  { start: 16, end: -16, length: 8, step: -4, range: 0x400000 },
+  { start: 16, end: -16, length: 12, step: -4, range: 0x400000 },
+  { start: 16, end: -16, length: 16, step: -4, range: 0x400000 },
+  { start: 16, end: -16, length: 20, step: -4, range: 0x400000 },
+
+  { start: 32, end: -32, length: 8, step: -4, range: 0x400000 },
+  { start: 32, end: -32, length: 12, step: -4, range: 0x400000 },
+  { start: 32, end: -32, length: 16, step: -4, range: 0x400000 },
+  { start: 32, end: -32, length: 20, step: -4, range: 0x400000 },
 
   { start: 32, end: -32, length: 8, step: -4, range: null },
   { start: 32, end: -32, length: 12, step: -4, range: null },
