@@ -103,7 +103,7 @@ export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModes
   let offset = 0
   for (const line of lines) {
     let match
-    if (match = line.match(/^@nsobid-(?<nsobid>[0-9a-fA-F]+)$/)) {
+    if (match = line.match(/^@nsobid-(?<nsobid>[0-9a-fA-F]+)\s*$/)) {
       let pchtxtNsobid = match.groups.nsobid.toUpperCase()
       let oldNsobid = getNsobid(fileOld)
       let newNsobid = getNsobid(fileNew)
@@ -114,7 +114,7 @@ export function updatePchtxt(fileOld, fileNew, pchtxt, searchModes = searchModes
       continue
     }
 
-    if (match = line.match(/^@flag\s+offset_shift\s+0x(?<offset>[0-9a-fA-F]+)$/)) {
+    if (match = line.match(/^@flag\s+offset_shift\s+0x(?<offset>[0-9a-fA-F]+)\s*$/)) {
       offset = parseInt(match.groups.offset, 16)
       output.push(line)
       continue
