@@ -25,7 +25,7 @@ let fileA = await fs.readFile('mainA.bin')
 let fileB = await fs.readFile('mainB.bin')
 let pchtxtA = await fs.readFile('A.pchtxt', 'utf8')
 
-let pchtxtB = portPchtxt(fileA, fileB, pchtxtA)
+let pchtxtB = await portPchtxt(fileA, fileB, pchtxtA)
 
 await fs.writeFile('B.pchtxt', pchtxtB)
 ```

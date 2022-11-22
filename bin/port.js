@@ -58,7 +58,7 @@ const argv = yargs
   }
 
   let pchtxtOld = await fs.readFile(argv.input, 'utf8')
-  let pchtxtNew = portPchtxt(fileOld, fileNew, pchtxtOld)
+  let pchtxtNew = await portPchtxt(fileOld, fileNew, pchtxtOld)
 
   await fs.writeFile(argv.output, pchtxtNew)
   console.log(`Output pchtxt saved to: ${argv.output}`)

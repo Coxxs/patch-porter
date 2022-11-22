@@ -94,9 +94,9 @@ export function portAddress(fileOld, fileNew, address, searchModes = searchModes
  * @param {Buffer} fileNew 
  * @param {string} pchtxt 
  * @param {Array<object>} searchModes 
- * @returns {string} new pchtxt
+ * @returns {Promise<string>} pchtxt
  */
-export function portPchtxt(fileOld, fileNew, pchtxt, searchModes = searchModesDefault) {
+export async function portPchtxt(fileOld, fileNew, pchtxt, searchModes = searchModesDefault) {
   const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
   const output = []
 
