@@ -1,6 +1,6 @@
 # patch-porter
 
-A simple .pchtxt porting tool.
+A simple `.pchtxt` porting tool.
 
 ## Usage
 
