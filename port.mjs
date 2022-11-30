@@ -68,7 +68,7 @@ export function portAddress(fileOld, fileNew, address, searchModes = searchModes
   }
   for (const searchMode of searchModes) {
     const { start, end, length, step, range } = searchMode
-    if (start == end && step == 0) {
+    if (start == end && step <= 0) {
       step = 1 // prevent infinite loop
     }
     if (start > end && step > 0 || start < end && step < 0) {
