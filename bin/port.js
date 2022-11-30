@@ -33,6 +33,15 @@ const argv = yargs
     type: 'boolean',
     default: false,
   })
+  .option('comment', {
+    description: 'Add ported address as comment to the output file',
+    type: 'boolean',
+    default: false,
+  })
+  .option('modes', {
+    description: 'Search modes to use (.json file)',
+    type: 'string',
+  })
   .help()
   .alias('help', 'h').argv;
 
@@ -54,11 +63,20 @@ const argv = yargs
     return
   }
 
+  let options = {}
+
+  if (argv.comment) {
+    options.addComment = true
+  }
+  if (argv.modes) {
+    options.searchModes = JSON.parse(await fs.readFile(argv.modes, 'utf8'))
+  }
+
   let fileOld = await fs.readFile(argv.from)
   let fileNew = await fs.readFile(argv.to)
 
   let pchtxtOld = await fs.readFile(argv.input, 'utf8')
-  let pchtxtNew = await portPchtxt(fileOld, fileNew, pchtxtOld)
+  let pchtxtNew = await portPchtxt(fileOld, fileNew, pchtxtOld, options)
 
   await fs.writeFile(argv.output, pchtxtNew)
   console.log(`Output pchtxt saved to: ${argv.output}`)

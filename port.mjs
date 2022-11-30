@@ -3,30 +3,29 @@ function dec2hex(number, length) {
 }
 
 const searchModesDefault = [
-  // { start: 16, end: -16, length: 8, step: -4, range: 0x1000 }, // Commented to reduce false positives
-  { start: 16, end: -16, length: 12, step: -4, range: 0x1000 },
-  { start: 16, end: -16, length: 16, step: -4, range: 0x1000 },
-  { start: 16, end: -16, length: 20, step: -4, range: 0x1000 },
+  { start: 16, end: -16, length: 12, step: -4, range: 0x200000 },
+  { start: 16, end: -16, length: 16, step: -4, range: 0x200000 },
+  { start: 16, end: -16, length: 20, step: -4, range: 0x200000 },
 
-  { start: 16, end: -16, length: 8, step: -4, range: 0x80000 },
-  { start: 16, end: -16, length: 12, step: -4, range: 0x80000 },
-  { start: 16, end: -16, length: 16, step: -4, range: 0x80000 },
-  { start: 16, end: -16, length: 20, step: -4, range: 0x80000 },
-
-  { start: 16, end: -16, length: 8, step: -4, range: 0x400000 },
   { start: 16, end: -16, length: 12, step: -4, range: 0x400000 },
   { start: 16, end: -16, length: 16, step: -4, range: 0x400000 },
   { start: 16, end: -16, length: 20, step: -4, range: 0x400000 },
 
-  { start: 32, end: -32, length: 8, step: -4, range: 0x400000 },
   { start: 32, end: -32, length: 12, step: -4, range: 0x400000 },
   { start: 32, end: -32, length: 16, step: -4, range: 0x400000 },
   { start: 32, end: -32, length: 20, step: -4, range: 0x400000 },
 
-  { start: 32, end: -32, length: 8, step: -4, range: null },
-  { start: 32, end: -32, length: 12, step: -4, range: null },
-  { start: 32, end: -32, length: 16, step: -4, range: null },
-  { start: 32, end: -32, length: 20, step: -4, range: null },
+  // { start: 32, end: -32, length: 8, step: -4, range: null },
+  { start: 48, end: -48, length: 12, step: -4, range: null },
+  { start: 48, end: -48, length: 16, step: -4, range: null },
+  { start: 48, end: -48, length: 20, step: -4, range: null },
+]
+
+const searchModesFast = [
+  { start: 16, end: -16, length: 12, step: -4, range: 0x1000 },
+  { start: 16, end: -16, length: 16, step: -4, range: 0x1000 },
+  { start: 16, end: -16, length: 20, step: -4, range: 0x1000 },
+  ...searchModesDefault
 ]
 
 /**
@@ -94,7 +93,8 @@ export function portAddress(fileOld, fileNew, address, searchModes = searchModes
       const indexs = indexOfAll(searchNew, data)
       if (indexs.length == 0) continue
       if (indexs.length > 1) continue
-      let delta = indexs[0] + startOffset - ptr
+      const index = indexs[0]
+      let delta = index + startOffset - ptr
       // console.log(`Found with mode ${JSON.stringify(searchMode)}, delta ${delta}`)
       return address + delta
     }
@@ -106,10 +106,15 @@ export function portAddress(fileOld, fileNew, address, searchModes = searchModes
  * @param {Buffer} fileOld 
  * @param {Buffer} fileNew 
  * @param {string} pchtxt 
- * @param {Array<object>} searchModes 
+ * @param {object} options 
  * @returns {Promise<string>} pchtxt
  */
-export async function portPchtxt(fileOld, fileNew, pchtxt, searchModes = searchModesDefault) {
+export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
+  options = {
+    searchModes: searchModesDefault,
+    addComment: false,
+    ...options,
+  }
   const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
   const output = []
 
@@ -138,7 +143,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, searchModes = searchM
       const oldAddress = parseInt(oldAddressStr, 16)
       const prefix = match.groups.prefix
       const suffix = match.groups.suffix
-      let newAddress = portAddress(fileOld, fileNew, oldAddress + offset, searchModes)
+      let newAddress = portAddress(fileOld, fileNew, oldAddress + offset, options.searchModes)
       if (newAddress === false) {
         console.error(`Failed to find new address for ${oldAddressStr}`)
         output.push(`${line} // [x] Failed to find new address in new file`)
@@ -148,7 +153,11 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, searchModes = searchM
       const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
       const delta = newAddress - oldAddress
       console.log(`Address updated: 0x${oldAddressStr} -> 0x${newAddressStr} (${delta})`)
-      output.push(`${prefix}${newAddressStr} ${suffix}`)
+      if (options.addComment) {
+        output.push(`${prefix}${newAddressStr} ${suffix} // [P] 0x${oldAddressStr} -> 0x${newAddressStr} (${delta})`)
+      } else {
+        output.push(`${prefix}${newAddressStr} ${suffix}`)
+      }
       continue
     }
 
