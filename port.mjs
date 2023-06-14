@@ -146,7 +146,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
       let newAddress = portAddress(fileOld, fileNew, oldAddress + offset, options.searchModes)
       if (newAddress === false) {
         console.error(`Failed to find new address for ${oldAddressStr}`)
-        output.push(`${line} // [x] Failed to find new address in new file`)
+        output.push(`${line} // [x] 0x${oldAddressStr} -> Failed`)
         continue
       }
       newAddress = newAddress - offset
