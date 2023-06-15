@@ -38,10 +38,6 @@ const argv = yargs
     type: 'boolean',
     default: false,
   })
-  .option('modes', {
-    description: 'Search modes to use (.json file)',
-    type: 'string',
-  })
   .help()
   .alias('help', 'h').argv;
 
@@ -67,9 +63,6 @@ const argv = yargs
 
   if (argv.comment) {
     options.addComment = true
-  }
-  if (argv.modes) {
-    options.searchModes = JSON.parse(await fs.readFile(argv.modes, 'utf8'))
   }
 
   let fileOld = await fs.readFile(argv.from)

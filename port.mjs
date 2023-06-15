@@ -1,6 +1,14 @@
+import { indexOfAll } from "./lib/fast-index-of-all.mjs"
 function dec2hex(number, length) {
   return number.toString(16).padStart(length, '0').toUpperCase()
 }
+
+const searchModesGlobal = [
+  { start: 64, end: -64, length: 12, step: -4, range: null },
+  { start: 64, end: -64, length: 16, step: -4, range: null },
+  { start: 256, end: -256, length: 16, step: -4, range: null },
+  { start: 1024, end: -1024, length: 16, step: -4, range: null },
+]
 
 const searchModesDefault = [
   { start: 16, end: -16, length: 12, step: -4, range: 0x200000 },
@@ -22,10 +30,9 @@ const searchModesDefault = [
 ]
 
 const searchModesFast = [
-  { start: 16, end: -16, length: 12, step: -4, range: 0x1000 },
-  { start: 16, end: -16, length: 16, step: -4, range: 0x1000 },
-  { start: 16, end: -16, length: 20, step: -4, range: 0x1000 },
-  ...searchModesDefault
+  { start: 16, end: -16, length: 12, step: -4, range: 0x100 },
+  { start: 24, end: -24, length: 16, step: -4, range: 0x200 },
+  { start: 64, end: -64, length: 16, step: -4, range: 0x1000 },
 ]
 
 /**
@@ -39,20 +46,74 @@ function getNsobid(buffer) {
 }
 
 /**
- * @param {Buffer} buffer Buffer to search
- * @param {Buffer} search Buffer to search for
- * @returns {Array<number>} Array of indexes
+ * @param {Buffer} fileOld
+ * @param {Buffer} fileNew
+ * @param {number} address 
+ * @param {object} searchMode
+ * @returns {Array<object> | false} results
  */
-function indexOfAll(buffer, search) {
-  const result = []
-  let offset = 0
-  while (true) {
-    const index = buffer.indexOf(search, offset)
-    if (index === -1) break
-    result.push(index)
-    offset = index + 1
+export function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode = searchModesDefault[0]) {
+  if (!Number.isInteger(address)) {
+    throw new Error('address must be an integer')
   }
-  return result
+  const { start, end, length, step, range } = searchMode
+  if (start == end && step <= 0) {
+    step = 1 // prevent infinite loop
+  }
+  if (start > end && step > 0 || start < end && step < 0) {
+    throw new Error(`Search mode ${JSON.stringify(searchMode)} will cause an infinite loop`)
+  }
+  // limit search range
+  let startOffset
+  let endOffset
+  // let searchOld
+  // let searchNew
+  if (Number.isInteger(range)) {
+    startOffset = Math.max(0, address + offset - range)
+    endOffset = address + offset + range
+    // searchOld = fileOld.subarray(startOffset, address + offset + range)
+    // searchNew = fileNew.subarray(startOffset, address + offset + range)
+  } else {
+    startOffset = 0
+    endOffset = fileNew.length
+    // searchOld = fileOld
+    // searchNew = fileNew
+  }
+  let results = []
+  for (let i = start; start > end ? i >= end : i <= end ; i += step) {
+    const ptr = address + i
+    const data = fileOld.subarray(ptr, ptr + length)
+    const indexs = indexOfAll(fileNew, data, startOffset, endOffset, 2)
+    if (indexs.length == 0) continue
+    if (indexs.length > 1) continue
+    const index = indexs[0]
+    let delta = index - ptr
+    results.push({ old: ptr, new: ptr + delta, delta: delta })
+  }
+  // console.log(`Found with mode ${JSON.stringify(searchMode)}, results ${JSON.stringify(results)}`)
+  return results
+}
+
+/**
+ * @param {Buffer} fileOld
+ * @param {Buffer} fileNew
+ * @param {number} address
+ * @param {object} searchMode
+ * @returns {number | false} offset
+ */
+export function getEstimatedOffset(fileOld, fileNew, address, searchMode = searchModesGlobal[0]) {
+  const results = portAddressSearchMode(fileOld, fileNew, address, 0, searchMode)
+  // console.log(`Estimating offset with search mode ${JSON.stringify(searchMode)}, results ${JSON.stringify(results)}`)
+  if (results.length == 0) return false
+
+  const deltas = results.map(result => result.delta)
+  deltas.sort((a, b) => a - b)
+  const median = deltas[Math.floor(deltas.length / 2)]
+
+  if (deltas.filter(delta => delta > median - 0x20 && delta < median + 0x20).length >= 3) {
+    return median
+  }
+  return false
 }
 
 /**
@@ -60,46 +121,45 @@ function indexOfAll(buffer, search) {
  * @param {Buffer} fileNew
  * @param {number} address 
  * @param {Array<object>} searchModes
- * @returns {number | false} delta
+ * @returns {number | false} address
  */
-export function portAddress(fileOld, fileNew, address, searchModes = searchModesDefault) {
+export function portAddress(fileOld, fileNew, address, searchModesOffset = searchModesGlobal, searchModes = searchModesFast) {
   if (!Number.isInteger(address)) {
     throw new Error('address must be an integer')
   }
+  let estimatedOffset
+  if (searchModesOffset) {
+    for (const searchMode of searchModesOffset) {
+      estimatedOffset = getEstimatedOffset(fileOld, fileNew, address, searchMode)
+      if (estimatedOffset !== false) break
+    }
+    // console.log(`Estimated offset: ${estimatedOffset}`)
+    if (estimatedOffset === false) return false  
+  } else {
+    estimatedOffset = 0
+  }
+
+  let results = []
   for (const searchMode of searchModes) {
-    const { start, end, length, step, range } = searchMode
-    if (start == end && step <= 0) {
-      step = 1 // prevent infinite loop
-    }
-    if (start > end && step > 0 || start < end && step < 0) {
-      throw new Error(`Search mode ${JSON.stringify(searchMode)} will cause an infinite loop`)
-    }
-    // limit search range
-    let startOffset
-    let searchOld
-    let searchNew
-    if (Number.isInteger(range)) {
-      startOffset = Math.max(0, address - range)
-      searchOld = fileOld.subarray(startOffset, address + range)
-      searchNew = fileNew.subarray(startOffset, address + range)
-    } else {
-      startOffset = 0
-      searchOld = fileOld
-      searchNew = fileNew
-    }
-    for (let i = start; start > end ? i >= end : i <= end ; i += step) {
-      const ptr = address + i
-      const data = fileOld.subarray(ptr, ptr + length)
-      const indexs = indexOfAll(searchNew, data)
-      if (indexs.length == 0) continue
-      if (indexs.length > 1) continue
-      const index = indexs[0]
-      let delta = index + startOffset - ptr
-      // console.log(`Found with mode ${JSON.stringify(searchMode)}, delta ${delta}`)
-      return address + delta
+    const searchResults = portAddressSearchMode(fileOld, fileNew, address, estimatedOffset, searchMode)
+    // console.log(`Search mode ${JSON.stringify(searchMode)}, results ${JSON.stringify(results)}`)
+    if (searchResults.length == 0) continue
+    const deltas = searchResults.map(r => r.delta)
+    deltas.sort((a, b) => a - b)
+    const median = deltas[Math.floor(deltas.length / 2)]
+    const count = deltas.filter(delta => delta == median).length
+    if (count >= 2 && count > deltas.length * 0.3) {
+      results.push({ old: address, new: address + median, delta: median, confidence: 1 })
+      break
+    } else if (deltas.length == 1) {
+      results.push({ old: address, new: address + median, delta: median, confidence: 0.5 })
     }
   }
-  return false
+  if (searchModesOffset) {
+    results.push({ old: address, new: address + estimatedOffset, delta: estimatedOffset, confidence: 0.1 })
+  }
+  results = results.sort((a, b) => b.confidence - a.confidence)
+  return results.length > 0 ? results[0] : false
 }
 
 /**
@@ -111,7 +171,6 @@ export function portAddress(fileOld, fileNew, address, searchModes = searchModes
  */
 export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
   options = {
-    searchModes: searchModesDefault,
     addComment: false,
     ...options,
   }
@@ -143,18 +202,36 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
       const oldAddress = parseInt(oldAddressStr, 16)
       const prefix = match.groups.prefix
       const suffix = match.groups.suffix
-      let newAddress = portAddress(fileOld, fileNew, oldAddress + offset, options.searchModes)
-      if (newAddress === false) {
+      let results = []
+      let resultA = portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault)
+      if (resultA) results.push(resultA)
+
+      let resultB = portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast)
+      if (resultB) results.push(resultB)
+
+      results = results.sort((a, b) => b.confidence - a.confidence)
+
+      if (results.length > 1 && results[1].new == results[0].new) {
+        results.splice(1, 1)
+      }
+
+      if (results.length <= 0) {
         console.error(`Failed to find new address for ${oldAddressStr}`)
         output.push(`${line} // [x] 0x${oldAddressStr} -> Failed`)
         continue
       }
-      newAddress = newAddress - offset
+
+      function generateComment(result) {
+        let newAddress = result.new - offset
+        const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
+        return `0x${oldAddressStr} -> 0x${newAddressStr} (${result.delta > 0 ? '+' : ''}${result.delta} C=${result.confidence})`
+      }
+
+      let newAddress = results[0].new - offset
       const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
-      const delta = newAddress - oldAddress
-      console.log(`Address updated: 0x${oldAddressStr} -> 0x${newAddressStr} (${delta})`)
-      if (options.addComment) {
-        output.push(`${prefix}${newAddressStr} ${suffix} // [P] 0x${oldAddressStr} -> 0x${newAddressStr} (${delta})`)
+      console.log(`Address updated: ${results.map(r => generateComment(r)).join(' | ')}`)
+      if (options.addComment || results[0].confidence < 1 || results.length > 1) {
+        output.push(`${prefix}${newAddressStr} ${suffix} // [P] ${results.map(r => generateComment(r)).join(' | ')}`)
       } else {
         output.push(`${prefix}${newAddressStr} ${suffix}`)
       }
