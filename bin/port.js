@@ -19,7 +19,6 @@ const argv = yargs
     alias: 'i',
     type: 'string',
     demandOption: true,
-
   })
   .option('output', {
     description: 'Output path for the new pchtxt file',
@@ -37,6 +36,11 @@ const argv = yargs
     description: 'Add ported address as comment to the output file',
     type: 'boolean',
     default: false,
+  })
+  .option('arch', {
+    description: 'Set the processor architecture for the NSO file (arm/arm64/none)',
+    type: 'string',
+    default: 'arm64',
   })
   .help()
   .alias('help', 'h').argv;
@@ -63,6 +67,9 @@ const argv = yargs
 
   if (argv.comment) {
     options.addComment = true
+  }
+  if (argv.arch) {
+    options.arch = argv.arch
   }
 
   let fileOld = await fs.readFile(argv.from)
