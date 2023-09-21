@@ -274,6 +274,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
     arch: 'arm64',
     ...options,
   }
+  const startTime = Date.now()
 
   let capstone
   if (options.arch === 'arm') {
@@ -373,5 +374,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
   }
 
   if (capstone) capstone.close()
+
+  console.log(`Finished in ${(Date.now() - startTime) / 1000}s.`)
   return output.join('\n')
 }
