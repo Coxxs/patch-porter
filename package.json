@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/Coxxs/patch-porter#readme",
   "dependencies": {
+    "capstone-wasm": "^1.0.3",
     "yargs": "^17.6.2"
   }
 }

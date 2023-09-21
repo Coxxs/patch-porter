@@ -1,4 +1,5 @@
 import { indexOfAll } from "./lib/fast-index-of-all.mjs"
+import { Const, Capstone, loadCapstone } from 'capstone-wasm'
 function dec2hex(number, length) {
   return number.toString(16).padStart(length, '0').toUpperCase()
 }
@@ -52,7 +53,7 @@ function getNsobid(buffer) {
  * @param {object} searchMode
  * @returns {Array<object> | false} results
  */
-export function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode = searchModesDefault[0]) {
+function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode = searchModesDefault[0]) {
   if (!Number.isInteger(address)) {
     throw new Error('address must be an integer')
   }
@@ -101,7 +102,7 @@ export function portAddressSearchMode(fileOld, fileNew, address, offset = 0, sea
  * @param {object} searchMode
  * @returns {number | false} offset
  */
-export function getEstimatedOffset(fileOld, fileNew, address, searchMode = searchModesGlobal[0]) {
+async function getEstimatedOffset(fileOld, fileNew, address, searchMode = searchModesGlobal[0]) {
   const results = portAddressSearchMode(fileOld, fileNew, address, 0, searchMode)
   // console.log(`Estimating offset with search mode ${JSON.stringify(searchMode)}, results ${JSON.stringify(results)}`)
   if (results.length == 0) return false
@@ -110,10 +111,74 @@ export function getEstimatedOffset(fileOld, fileNew, address, searchMode = searc
   deltas.sort((a, b) => a - b)
   const median = deltas[Math.floor(deltas.length / 2)]
 
+  let confidence = await getPortConfidenceByInstructions(fileOld, fileNew, address, address + median)
   if (deltas.filter(delta => delta > median - 0x20 && delta < median + 0x20).length >= 3) {
     return median
   }
+  if (confidence > 0.7) {
+    return median
+  }
   return false
+}
+
+async function getPortConfidenceByInstructions(fileOld, fileNew, addressOld, addressNew, start = -16, end = 16, arm64 = true) {
+  await loadCapstone()
+  const capstone = new Capstone(arm64 ? Const.CS_ARCH_ARM64 : Const.CS_ARCH_ARM, Const.CS_MODE_ARM)
+
+  if (start % 4 !== 0 || end % 4 !== 0) {
+    throw new Error('offset not aligned with instructions')
+  }
+
+  let confidences = []
+
+  for (let i = start; i < end; i += 4) {
+    const dataOld = fileOld.subarray(addressOld + i, addressOld + i + 4)
+    const dataNew = fileNew.subarray(addressNew + i, addressNew + i + 4)
+    let insnsOld
+    let insnsNew
+
+    try {
+      insnsOld = capstone.disasm(dataOld, { address: 0xcafe880000000 })
+    } catch (err) {
+      insnsOld = err
+    }
+    try {
+      insnsNew = capstone.disasm(dataNew, { address: 0xcafe880000000 })
+    } catch (err) {
+      insnsNew = err
+    }
+
+    let confidence = 0
+    if (insnsOld instanceof Error || insnsNew instanceof Error) {
+      if (Buffer.compare(dataOld, dataNew) === 0) {
+        confidence = 1
+      } else if (insnsOld instanceof Error && insnsNew instanceof Error) {
+        confidence = 0.1
+      } else {
+        confidence = 0
+      }
+      // console.log('has error, confidence = ' + confidence, insnsOld instanceof Error, insnsNew instanceof Error)
+    } else if (insnsOld.length === 1 && insnsNew.length === 1) {
+      // console.log(insnsOld[0].mnemonic, insnsOld[0].opStr, '->', insnsNew[0].mnemonic, insnsNew[0].opStr)
+      if (insnsOld[0].mnemonic === insnsNew[0].mnemonic) {
+        confidence += 0.2
+        if (insnsOld[0].opStr === insnsNew[0].opStr) {
+          confidence += 0.8
+        } else {
+          const regex = /#0xcafe8[0-9a-f]+/g
+          const noAddrOpStrOld = insnsOld[0].opStr.replace(regex, '#0xDUMMY')
+          const noAddrOpStrNew = insnsNew[0].opStr.replace(regex, '#0xDUMMY')
+          if (noAddrOpStrOld === noAddrOpStrNew) {
+            confidence += 0.75
+          }
+        }
+      }
+    }
+    confidences.push(confidence)
+  }
+
+  const average = arr => arr.reduce( ( p, c ) => p + c, 0 ) / arr.length;
+  return average(confidences)
 }
 
 /**
@@ -123,14 +188,15 @@ export function getEstimatedOffset(fileOld, fileNew, address, searchMode = searc
  * @param {Array<object>} searchModes
  * @returns {number | false} address
  */
-export function portAddress(fileOld, fileNew, address, searchModesOffset = searchModesGlobal, searchModes = searchModesFast) {
+export async function portAddress(fileOld, fileNew, address, searchModesOffset = searchModesGlobal, searchModes = searchModesFast) {
   if (!Number.isInteger(address)) {
     throw new Error('address must be an integer')
   }
   let estimatedOffset
   if (searchModesOffset) {
     for (const searchMode of searchModesOffset) {
-      estimatedOffset = getEstimatedOffset(fileOld, fileNew, address, searchMode)
+      estimatedOffset = await getEstimatedOffset(fileOld, fileNew, address, searchMode)
+      console.log(`Unable to find estimated offset!`)
       if (estimatedOffset !== false) break
     }
     // console.log(`Estimated offset: ${estimatedOffset}`)
@@ -148,15 +214,23 @@ export function portAddress(fileOld, fileNew, address, searchModesOffset = searc
     deltas.sort((a, b) => a - b)
     const median = deltas[Math.floor(deltas.length / 2)]
     const count = deltas.filter(delta => delta == median).length
+    let instructionsConfidence = Math.min(
+      await getPortConfidenceByInstructions(fileOld, fileNew, address, address + median),
+      await getPortConfidenceByInstructions(fileOld, fileNew, address, address + median, 0, 4)
+    )
     if (count >= 2 && count > deltas.length * 0.3) {
-      results.push({ old: address, new: address + median, delta: median, confidence: 1 })
+      results.push({ old: address, new: address + median, delta: median, confidence: Math.min(1, instructionsConfidence) })
       break
     } else if (deltas.length == 1) {
-      results.push({ old: address, new: address + median, delta: median, confidence: 0.5 })
+      results.push({ old: address, new: address + median, delta: median, confidence: Math.min(0.6, instructionsConfidence) })
     }
   }
   if (searchModesOffset) {
-    results.push({ old: address, new: address + estimatedOffset, delta: estimatedOffset, confidence: 0.1 })
+    let instructionsConfidence = Math.min(
+      await getPortConfidenceByInstructions(fileOld, fileNew, address, address + estimatedOffset),
+      await getPortConfidenceByInstructions(fileOld, fileNew, address, address + estimatedOffset, 0, 4)
+    )
+    results.push({ old: address, new: address + estimatedOffset, delta: estimatedOffset, confidence: Math.min(0.3, instructionsConfidence) })
   }
   results = results.sort((a, b) => b.confidence - a.confidence)
   return results.length > 0 ? results[0] : false
@@ -203,10 +277,10 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
       const prefix = match.groups.prefix
       const suffix = match.groups.suffix
       let results = []
-      let resultA = portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault)
+      let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault)
       if (resultA) results.push(resultA)
 
-      let resultB = portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast)
+      let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast)
       if (resultB) results.push(resultB)
 
       results = results.sort((a, b) => b.confidence - a.confidence)
@@ -224,14 +298,14 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
       function generateComment(result) {
         let newAddress = result.new - offset
         const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
-        return `0x${oldAddressStr} -> 0x${newAddressStr} (${result.delta > 0 ? '+' : ''}${result.delta} C=${result.confidence})`
+        return `0x${oldAddressStr} -> 0x${newAddressStr} (${result.delta > 0 ? '+' : ''}${result.delta} C=${result.confidence.toFixed(2)})`
       }
 
       let newAddress = results[0].new - offset
       const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
       console.log(`Address updated: ${results.map(r => generateComment(r)).join(' | ')}`)
-      if (options.addComment || results[0].confidence < 1 || results.length > 1) {
-        output.push(`${prefix}${newAddressStr} ${suffix} // [P] ${results.map(r => generateComment(r)).join(' | ')}`)
+      if (options.addComment || results[0].confidence < 0.8 || results.length > 1) {
+        output.push(`${prefix}${newAddressStr} ${suffix} // ${results[0].confidence >= 0.3 ? '[P]' : '[x]'} ${results.map(r => generateComment(r)).join(' | ')}`)
       } else {
         output.push(`${prefix}${newAddressStr} ${suffix}`)
       }
