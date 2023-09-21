@@ -53,11 +53,6 @@ const argv = yargs
     return
   }
 
-  if (argv.input == argv.output) {
-    console.error('Error: Input and output paths are the same')
-    return
-  }
-
   if (existsSync(argv.output) && !argv.overwrite) {
     console.error('Error: Output pchtxt already exists, use -w to overwrite')
     return
@@ -75,9 +70,25 @@ const argv = yargs
   let fileOld = await fs.readFile(argv.from)
   let fileNew = await fs.readFile(argv.to)
 
-  let pchtxtOld = await fs.readFile(argv.input, 'utf8')
-  let pchtxtNew = await portPchtxt(fileOld, fileNew, pchtxtOld, options)
+  const inputs = Array.isArray(argv.input) ? argv.input : [argv.input]
+  const outputs = Array.isArray(argv.output) ? argv.output : [argv.output]
 
-  await fs.writeFile(argv.output, pchtxtNew)
-  console.log(`Output pchtxt saved to: ${argv.output}`)
+  if (inputs.length !== outputs.length) {
+    console.error('Error: The number of inputs does not match the number of outputs')
+  }
+
+  for (let i = 0; i < inputs.length; i++) {
+    const input = inputs[i]
+    const output = outputs[i]
+    if (input == output) {
+      console.error('Error: Input and output paths are the same')
+      return
+    }
+
+    let pchtxtOld = await fs.readFile(input, 'utf8')
+    let pchtxtNew = await portPchtxt(fileOld, fileNew, pchtxtOld, options)
+
+    await fs.writeFile(output, pchtxtNew)
+    console.log(`Output pchtxt saved to: ${output}`)
+  }
 })()
