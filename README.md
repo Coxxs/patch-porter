@@ -9,7 +9,7 @@ A simple `.pchtxt` porting tool.
 2. Decompress NSO using [hactool](https://github.com/SciresM/hactool):
     - `hactool -t nso main --uncompressed main.raw`
 3. Port your pchtxt:
-    - `patch-porter --from=mainA.raw --to=mainB.raw --input=A.pchtxt --output=B.pchtxt`
+    - `patch-porter --from=mainA.raw --to=mainB.raw --input=A.pchtxt --output=B.pchtxt --comment`
 4. Done!
 
 ## Tips
