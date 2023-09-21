@@ -102,7 +102,7 @@ function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode
  * @param {object} searchMode
  * @returns {number | false} offset
  */
-async function getEstimatedOffset(fileOld, fileNew, address, searchMode = searchModesGlobal[0]) {
+async function getEstimatedOffset(capstone, fileOld, fileNew, address, searchMode = searchModesGlobal[0]) {
   const results = portAddressSearchMode(fileOld, fileNew, address, 0, searchMode)
   // console.log(`Estimating offset with search mode ${JSON.stringify(searchMode)}, results ${JSON.stringify(results)}`)
   if (results.length == 0) return false
@@ -111,20 +111,22 @@ async function getEstimatedOffset(fileOld, fileNew, address, searchMode = search
   deltas.sort((a, b) => a - b)
   const median = deltas[Math.floor(deltas.length / 2)]
 
-  let confidence = await getPortConfidenceByInstructions(fileOld, fileNew, address, address + median)
   if (deltas.filter(delta => delta > median - 0x20 && delta < median + 0x20).length >= 3) {
     return median
   }
-  if (confidence > 0.7) {
-    return median
+  if (capstone) {
+    let confidence = await getPortConfidenceByInstructions(capstone, fileOld, fileNew, address, address + median)
+    if (confidence > 0.7) {
+      return median
+    }  
   }
   return false
 }
 
-async function getPortConfidenceByInstructions(fileOld, fileNew, addressOld, addressNew, start = -16, end = 16, arm64 = true) {
-  await loadCapstone()
-  const capstone = new Capstone(arm64 ? Const.CS_ARCH_ARM64 : Const.CS_ARCH_ARM, Const.CS_MODE_ARM)
-
+async function getPortConfidenceByInstructions(capstone, fileOld, fileNew, addressOld, addressNew, start = -16, end = 16) {
+  if (!capstone) {
+    throw new Error('capstone is required')
+  }
   if (start % 4 !== 0 || end % 4 !== 0) {
     throw new Error('offset not aligned with instructions')
   }
@@ -181,22 +183,42 @@ async function getPortConfidenceByInstructions(fileOld, fileNew, addressOld, add
   return average(confidences)
 }
 
+async function getInstruction(capstone, file, fileAddress, capstoneAddress) {
+  if (!capstone) {
+    throw new Error('capstone is required')
+  }
+  const data = file.subarray(fileAddress, fileAddress + 4)
+  let insns
+  try {
+    insns = capstone.disasm(data, { address: capstoneAddress })
+  } catch (err) {
+    insns = []
+  }
+
+  if (insns.length !== 1) {
+    return null
+  } else {
+    return insns[0].mnemonic + ' ' + insns[0].opStr
+  }
+}
+
 /**
  * @param {Buffer} fileOld
  * @param {Buffer} fileNew
  * @param {number} address 
+ * @param {Array<object>} searchModesOffset
  * @param {Array<object>} searchModes
  * @returns {number | false} address
  */
-export async function portAddress(fileOld, fileNew, address, searchModesOffset = searchModesGlobal, searchModes = searchModesFast) {
+export async function portAddress(fileOld, fileNew, address, searchModesOffset = searchModesGlobal, searchModes = searchModesFast, capstone = null) {
   if (!Number.isInteger(address)) {
     throw new Error('address must be an integer')
   }
   let estimatedOffset
   if (searchModesOffset) {
     for (const searchMode of searchModesOffset) {
-      estimatedOffset = await getEstimatedOffset(fileOld, fileNew, address, searchMode)
-      console.log(`Unable to find estimated offset!`)
+      estimatedOffset = await getEstimatedOffset(capstone, fileOld, fileNew, address, searchMode)
+      // console.log(`Unable to find estimated offset!`)
       if (estimatedOffset !== false) break
     }
     // console.log(`Estimated offset: ${estimatedOffset}`)
@@ -214,23 +236,26 @@ export async function portAddress(fileOld, fileNew, address, searchModesOffset =
     deltas.sort((a, b) => a - b)
     const median = deltas[Math.floor(deltas.length / 2)]
     const count = deltas.filter(delta => delta == median).length
-    let instructionsConfidence = Math.min(
-      await getPortConfidenceByInstructions(fileOld, fileNew, address, address + median),
-      await getPortConfidenceByInstructions(fileOld, fileNew, address, address + median, 0, 4)
-    )
+    const instructionsConfidence = capstone ? Math.min(
+      await getPortConfidenceByInstructions(capstone, fileOld, fileNew, address, address + median),
+      await getPortConfidenceByInstructions(capstone, fileOld, fileNew, address, address + median, 0, 4)
+    ) : null
     if (count >= 2 && count > deltas.length * 0.3) {
-      results.push({ old: address, new: address + median, delta: median, confidence: Math.min(1, instructionsConfidence) })
+      const confidence = instructionsConfidence !== null ? Math.min(1, instructionsConfidence) : 1
+      results.push({ old: address, new: address + median, delta: median, confidence: confidence })
       break
     } else if (deltas.length == 1) {
-      results.push({ old: address, new: address + median, delta: median, confidence: Math.min(0.6, instructionsConfidence) })
+      const confidence = instructionsConfidence !== null ? Math.min(0.6, instructionsConfidence) : 0.6
+      results.push({ old: address, new: address + median, delta: median, confidence: Math.min(0.6, confidence) })
     }
   }
   if (searchModesOffset) {
-    let instructionsConfidence = Math.min(
-      await getPortConfidenceByInstructions(fileOld, fileNew, address, address + estimatedOffset),
-      await getPortConfidenceByInstructions(fileOld, fileNew, address, address + estimatedOffset, 0, 4)
-    )
-    results.push({ old: address, new: address + estimatedOffset, delta: estimatedOffset, confidence: Math.min(0.3, instructionsConfidence) })
+    const instructionsConfidence = capstone ? Math.min(
+      await getPortConfidenceByInstructions(capstone, fileOld, fileNew, address, address + estimatedOffset),
+      await getPortConfidenceByInstructions(capstone, fileOld, fileNew, address, address + estimatedOffset, 0, 4)
+    ) : null
+    const confidence = instructionsConfidence !== null ? Math.min(0.3, instructionsConfidence) : 0.3
+    results.push({ old: address, new: address + estimatedOffset, delta: estimatedOffset, confidence: confidence })
   }
   results = results.sort((a, b) => b.confidence - a.confidence)
   return results.length > 0 ? results[0] : false
@@ -246,8 +271,23 @@ export async function portAddress(fileOld, fileNew, address, searchModesOffset =
 export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
   options = {
     addComment: false,
+    arch: 'arm64',
     ...options,
   }
+
+  let capstone
+  if (options.arch === 'arm') {
+    await loadCapstone()
+    capstone = new Capstone(Const.CS_ARCH_ARM, Const.CS_MODE_ARM)
+  } else if (options.arch === 'arm64') {
+    await loadCapstone()
+    capstone = new Capstone(Const.CS_ARCH_ARM64, Const.CS_MODE_ARM)
+  } else if (options.arch === 'none') {
+    capstone = null
+  } else {
+    throw new Error(`invalid arch: ${arch}`)
+  }
+
   const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
   const output = []
 
@@ -277,13 +317,21 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
       const prefix = match.groups.prefix
       const suffix = match.groups.suffix
       let results = []
-      let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault)
+      let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault, capstone)
       if (resultA) results.push(resultA)
 
-      let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast)
+      let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast, capstone)
       if (resultB) results.push(resultB)
 
       results = results.sort((a, b) => b.confidence - a.confidence)
+
+      if (capstone) {
+        const oldInstructionStr = await getInstruction(capstone, fileOld, oldAddress + offset, oldAddress)
+        for (let result of results) {
+          result.oldInst = oldInstructionStr
+          result.newInst = await getInstruction(capstone, fileNew, result.new, result.new - offset)
+        }  
+      }
 
       if (results.length > 1 && results[1].new == results[0].new) {
         results.splice(1, 1)
@@ -298,7 +346,16 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
       function generateComment(result) {
         let newAddress = result.new - offset
         const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
-        return `0x${oldAddressStr} -> 0x${newAddressStr} (${result.delta > 0 ? '+' : ''}${result.delta} C=${result.confidence.toFixed(2)})`
+        const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
+        const newInstStr = result.newInst ? ` (${result.newInst})` : ''
+
+        function formatConfidence(c) {
+          if (Math.abs(c % 1) < 0.0000001) {
+            return Math.round(c)
+          }
+          return c.toFixed(2)
+        }
+        return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`
       }
 
       let newAddress = results[0].new - offset
@@ -315,5 +372,6 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
     output.push(line)
   }
 
+  if (capstone) capstone.close()
   return output.join('\n')
 }
