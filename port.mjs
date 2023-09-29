@@ -97,7 +97,7 @@ function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode
 }
 
 /**
- * @param {object | null} capstone
+ * @param {Capstone | null} capstone
  * @param {Buffer} fileOld
  * @param {Buffer} fileNew
  * @param {number} address
@@ -126,7 +126,7 @@ async function getEstimatedOffset(capstone, fileOld, fileNew, address, searchMod
 }
 
 /**
- * @param {object} capstone 
+ * @param {Capstone} capstone 
  * @param {Buffer} fileOld 
  * @param {Buffer} fileNew 
  * @param {number} addressOld 
@@ -196,7 +196,7 @@ async function getPortConfidenceByInstructions(capstone, fileOld, fileNew, addre
 }
 
 /**
- * @param {object} capstone 
+ * @param {Capstone} capstone 
  * @param {Buffer} file 
  * @param {number} fileAddress 
  * @param {number} capstoneAddress 
@@ -227,7 +227,7 @@ async function getInstruction(capstone, file, fileAddress, capstoneAddress) {
  * @param {number} address 
  * @param {Array<object>} searchModesOffset
  * @param {Array<object>} searchModes
- * @param {object | null} capstone
+ * @param {Capstone | null} capstone
  * @returns {Promise<object | false>} address
  */
 export async function portAddress(fileOld, fileNew, address, searchModesOffset = searchModesGlobal, searchModes = searchModesFast, capstone = null) {
