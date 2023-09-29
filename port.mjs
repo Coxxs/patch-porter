@@ -309,92 +309,95 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
     throw new Error(`invalid arch: ${arch}`)
   }
 
-  const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
-  const output = []
-
-  let offset = 0
-  for (const line of lines) {
-    let match
-    if (match = line.match(/^@nsobid-(?<nsobid>[0-9a-fA-F]+)\s*$/)) {
-      let pchtxtNsobid = match.groups.nsobid.toUpperCase()
-      let oldNsobid = getNsobid(fileOld)
-      let newNsobid = getNsobid(fileNew)
-      if (oldNsobid !== pchtxtNsobid) {
-        throw new Error(`nsobid mismatch: ${oldNsobid} (nso) != ${pchtxtNsobid} (pchtxt)`)
-      }
-      output.push(`@nsobid-${newNsobid}`)
-      continue
-    }
-
-    if (match = line.match(/^@flag\s+offset_shift\s+0x(?<offset>[0-9a-fA-F]+)\s*$/)) {
-      offset = parseInt(match.groups.offset, 16)
-      output.push(line)
-      continue
-    }
-
-    if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s(?<suffix>.+)$/)) {
-      const oldAddressStr = match.groups.address
-      const oldAddress = parseInt(oldAddressStr, 16)
-      const prefix = match.groups.prefix
-      const suffix = match.groups.suffix
-      let results = []
-      let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault, capstone)
-      if (resultA) results.push(resultA)
-
-      let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast, capstone)
-      if (resultB) results.push(resultB)
-
-      results = results.sort((a, b) => b.confidence - a.confidence)
-
-      if (capstone) {
-        const oldInstructionStr = await getInstruction(capstone, fileOld, oldAddress + offset, oldAddress)
-        for (let result of results) {
-          result.oldInst = oldInstructionStr
-          result.newInst = await getInstruction(capstone, fileNew, result.new, result.new - offset)
-        }  
-      }
-
-      if (results.length > 1 && results[1].new == results[0].new) {
-        results.splice(1, 1)
-      }
-
-      if (results.length <= 0) {
-        console.error(`Failed to find new address for ${oldAddressStr}`)
-        output.push(`${line} // [x] 0x${oldAddressStr} -> Failed`)
+  try {
+    const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
+    const output = []
+  
+    let offset = 0
+    for (const line of lines) {
+      let match
+      if (match = line.match(/^@nsobid-(?<nsobid>[0-9a-fA-F]+)\s*$/)) {
+        let pchtxtNsobid = match.groups.nsobid.toUpperCase()
+        let oldNsobid = getNsobid(fileOld)
+        let newNsobid = getNsobid(fileNew)
+        if (oldNsobid !== pchtxtNsobid) {
+          throw new Error(`nsobid mismatch: ${oldNsobid} (nso) != ${pchtxtNsobid} (pchtxt)`)
+        }
+        output.push(`@nsobid-${newNsobid}`)
         continue
       }
-
-      function generateComment(result) {
-        let newAddress = result.new - offset
-        const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
-        const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
-        const newInstStr = result.newInst ? ` (${result.newInst})` : ''
-
-        function formatConfidence(c) {
-          if (Math.abs(c % 1) < 0.0000001) {
-            return Math.round(c)
-          }
-          return c.toFixed(2)
+  
+      if (match = line.match(/^@flag\s+offset_shift\s+0x(?<offset>[0-9a-fA-F]+)\s*$/)) {
+        offset = parseInt(match.groups.offset, 16)
+        output.push(line)
+        continue
+      }
+  
+      if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s(?<suffix>.+)$/)) {
+        const oldAddressStr = match.groups.address
+        const oldAddress = parseInt(oldAddressStr, 16)
+        const prefix = match.groups.prefix
+        const suffix = match.groups.suffix
+        let results = []
+        let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault, capstone)
+        if (resultA) results.push(resultA)
+  
+        let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast, capstone)
+        if (resultB) results.push(resultB)
+  
+        results = results.sort((a, b) => b.confidence - a.confidence)
+  
+        if (capstone) {
+          const oldInstructionStr = await getInstruction(capstone, fileOld, oldAddress + offset, oldAddress)
+          for (let result of results) {
+            result.oldInst = oldInstructionStr
+            result.newInst = await getInstruction(capstone, fileNew, result.new, result.new - offset)
+          }  
         }
-        return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`
+  
+        if (results.length > 1 && results[1].new == results[0].new) {
+          results.splice(1, 1)
+        }
+  
+        if (results.length <= 0) {
+          console.error(`Failed to find new address for ${oldAddressStr}`)
+          output.push(`${line} // [x] 0x${oldAddressStr} -> Failed`)
+          continue
+        }
+  
+        function generateComment(result) {
+          let newAddress = result.new - offset
+          const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
+          const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
+          const newInstStr = result.newInst ? ` (${result.newInst})` : ''
+  
+          function formatConfidence(c) {
+            if (Math.abs(c % 1) < 0.0000001) {
+              return Math.round(c)
+            }
+            return c.toFixed(2)
+          }
+          return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`
+        }
+  
+        let newAddress = results[0].new - offset
+        const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
+        console.log(`Address updated: ${results.map(r => generateComment(r)).join(' | ')}`)
+        if (options.addComment || results[0].confidence < 0.8 || results.length > 1) {
+          output.push(`${prefix}${newAddressStr} ${suffix} // ${results[0].confidence >= 0.3 ? '[P]' : '[x]'} ${results.map(r => generateComment(r)).join(' | ')}`)
+        } else {
+          output.push(`${prefix}${newAddressStr} ${suffix}`)
+        }
+        continue
       }
-
-      let newAddress = results[0].new - offset
-      const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
-      console.log(`Address updated: ${results.map(r => generateComment(r)).join(' | ')}`)
-      if (options.addComment || results[0].confidence < 0.8 || results.length > 1) {
-        output.push(`${prefix}${newAddressStr} ${suffix} // ${results[0].confidence >= 0.3 ? '[P]' : '[x]'} ${results.map(r => generateComment(r)).join(' | ')}`)
-      } else {
-        output.push(`${prefix}${newAddressStr} ${suffix}`)
-      }
-      continue
+  
+      output.push(line)
     }
-
-    output.push(line)
+  
+  
+    console.log(`Finished in ${(Date.now() - startTime) / 1000}s.`)
+    return output.join('\n')  
+  } finally {
+    if (capstone) capstone.close()
   }
-
-  if (capstone) capstone.close()
-
-  console.log(`Finished in ${(Date.now() - startTime) / 1000}s.`)
-  return output.join('\n')
 }
