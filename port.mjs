@@ -49,9 +49,10 @@ function getNsobid(buffer) {
 /**
  * @param {Buffer} fileOld
  * @param {Buffer} fileNew
- * @param {number} address 
+ * @param {number} address
+ * @param {number} offset
  * @param {object} searchMode
- * @returns {Array<object> | false} results
+ * @returns {Array<object>} results
  */
 function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode = searchModesDefault[0]) {
   if (!Number.isInteger(address)) {
@@ -96,11 +97,12 @@ function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode
 }
 
 /**
+ * @param {object | null} capstone
  * @param {Buffer} fileOld
  * @param {Buffer} fileNew
  * @param {number} address
  * @param {object} searchMode
- * @returns {number | false} offset
+ * @returns {Promise<number | false>} offset
  */
 async function getEstimatedOffset(capstone, fileOld, fileNew, address, searchMode = searchModesGlobal[0]) {
   const results = portAddressSearchMode(fileOld, fileNew, address, 0, searchMode)
@@ -123,6 +125,16 @@ async function getEstimatedOffset(capstone, fileOld, fileNew, address, searchMod
   return false
 }
 
+/**
+ * @param {object} capstone 
+ * @param {Buffer} fileOld 
+ * @param {Buffer} fileNew 
+ * @param {number} addressOld 
+ * @param {number} addressNew 
+ * @param {number} start 
+ * @param {number} end 
+ * @returns {Promise<number>} confidence
+ */
 async function getPortConfidenceByInstructions(capstone, fileOld, fileNew, addressOld, addressNew, start = -16, end = 16) {
   if (!capstone) {
     throw new Error('capstone is required')
@@ -183,6 +195,13 @@ async function getPortConfidenceByInstructions(capstone, fileOld, fileNew, addre
   return average(confidences)
 }
 
+/**
+ * @param {object} capstone 
+ * @param {Buffer} file 
+ * @param {number} fileAddress 
+ * @param {number} capstoneAddress 
+ * @returns {Promise<string>} assembly instruction
+ */
 async function getInstruction(capstone, file, fileAddress, capstoneAddress) {
   if (!capstone) {
     throw new Error('capstone is required')
@@ -208,7 +227,8 @@ async function getInstruction(capstone, file, fileAddress, capstoneAddress) {
  * @param {number} address 
  * @param {Array<object>} searchModesOffset
  * @param {Array<object>} searchModes
- * @returns {number | false} address
+ * @param {object | null} capstone
+ * @returns {Promise<object | false>} address
  */
 export async function portAddress(fileOld, fileNew, address, searchModesOffset = searchModesGlobal, searchModes = searchModesFast, capstone = null) {
   if (!Number.isInteger(address)) {
