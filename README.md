@@ -7,7 +7,7 @@ A simple `.pchtxt` porting tool.
 1. Install [Node.js](https://nodejs.org), then install `patch-porter` using npm:
     - `npm install -g patch-porter`
 2. Decompress NSO using [hactool](https://github.com/SciresM/hactool):
-    - `hactool -t nso main --uncompressed main.raw`
+    - `hactool -t nso --uncompressed main.raw main`
 3. Port your pchtxt:
     - `patch-porter --from=mainA.raw --to=mainB.raw --input=A.pchtxt --output=B.pchtxt`
         - `--comment`: Add ported address as comment to the output file
