@@ -312,6 +312,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
   try {
     const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
     const output = []
+    const portCache = new Map()
   
     let offset = 0
     for (const line of lines) {
@@ -338,25 +339,33 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         const oldAddress = parseInt(oldAddressStr, 16)
         const prefix = match.groups.prefix
         const suffix = match.groups.suffix
-        let results = []
-        let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault, capstone)
-        if (resultA) results.push(resultA)
-  
-        let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast, capstone)
-        if (resultB) results.push(resultB)
-  
-        results = results.sort((a, b) => b.confidence - a.confidence)
-  
-        if (capstone) {
-          const oldInstructionStr = await getInstruction(capstone, fileOld, oldAddress + offset, oldAddress)
-          for (let result of results) {
-            result.oldInst = oldInstructionStr
-            result.newInst = await getInstruction(capstone, fileNew, result.new, result.new - offset)
-          }  
-        }
-  
-        if (results.length > 1 && results[1].new == results[0].new) {
-          results.splice(1, 1)
+
+        let results
+        if (portCache.has(oldAddress + offset)) {
+          results = portCache.get(oldAddress + offset) // may need structuredClone in the future
+        } else {
+          results = []
+          let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault, capstone)
+          if (resultA) results.push(resultA)
+    
+          let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast, capstone)
+          if (resultB) results.push(resultB)
+    
+          results = results.sort((a, b) => b.confidence - a.confidence)
+          
+          if (capstone) {
+            const oldInstructionStr = await getInstruction(capstone, fileOld, oldAddress + offset, oldAddress)
+            for (let result of results) {
+              result.oldInst = oldInstructionStr
+              result.newInst = await getInstruction(capstone, fileNew, result.new, result.new - offset)
+            }  
+          }
+    
+          if (results.length > 1 && results[1].new == results[0].new) {
+            results.splice(1, 1)
+          }
+
+          portCache.set(oldAddress + offset, results) // may need structuredClone in the future
         }
   
         if (results.length <= 0) {
