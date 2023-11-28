@@ -32,3 +32,9 @@ let pchtxtB = await portPchtxt(fileA, fileB, pchtxtA)
 
 await fs.writeFile('B.pchtxt', pchtxtB)
 ```
+
+## Credits
+
+- [disasm-web](https://github.com/CzBiX/disasm-web)
+- [capstone](https://github.com/capstone-engine/capstone)
+- [IPSwitch](https://github.com/3096/ipswitch)
