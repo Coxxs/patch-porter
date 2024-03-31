@@ -22,6 +22,7 @@ A simple `.pchtxt` porting tool.
     patch-porter --from=mainA.raw --to=mainB.raw --input=A.pchtxt --output=B.pchtxt
     ```
     - `--comment`: Add ported address as comment to the output file
+    - `--arch=arm64`: Set the processor architecture for the NSO file (arm/arm64/none)
 
 4. Done!
 
