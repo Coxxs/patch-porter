@@ -37,6 +37,16 @@ const argv = yargs
     type: 'boolean',
     default: false,
   })
+  .option('no-nso', {
+    description: 'Disable NSO mode, treat files as raw binary file',
+    type: 'boolean',
+    default: false,
+  })
+  .option('nso', {
+    description: 'Use NSO mode, NSO file will be decompressed automatically in this mode, but you need to set size of NSO header to 0x100 correctly in phxtxt file (@flag offset_shift 0x100)',
+    type: 'boolean',
+    default: true,
+  })
   .option('arch', {
     description: 'Set the processor architecture for the NSO file (arm/arm64/none)',
     type: 'string',
@@ -58,13 +68,23 @@ const argv = yargs
     return
   }
 
+  if (argv.noNso == argv.nso) {
+    console.error('Error: Conflict options (--nso and --no-nso).')
+  }
+
   let options = {}
 
-  if (argv.comment) {
-    options.addComment = true
+  if (argv.comment != null) {
+    options.addComment = argv.comment
   }
-  if (argv.arch) {
+  if (argv.arch != null) {
     options.arch = argv.arch
+  }
+  if (argv.nso != null) {
+    options.nso = argv.nso
+  }
+  if (argv.noNso != null) {
+    options.nso = !argv.noNso
   }
 
   let fileOld = await fs.readFile(argv.from)

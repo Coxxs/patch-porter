@@ -10,21 +10,15 @@ A simple `.pchtxt` porting tool.
     npm install -g patch-porter
     ```
 
-2. Decompress NSO using [hactool](https://github.com/SciresM/hactool):
+2. Port your pchtxt:
 
     ```shell
-    hactool -t nso --uncompressed main.raw main
-    ```
-
-3. Port your pchtxt:
-
-    ```shell
-    patch-porter --from=mainA.raw --to=mainB.raw --input=A.pchtxt --output=B.pchtxt
+    patch-porter --from=mainA --to=mainB --input=A.pchtxt --output=B.pchtxt
     ```
     - `--comment`: Add ported address as comment to the output file
     - `--arch=arm64`: Set the processor architecture for the NSO file (arm/arm64/none), default: arm64
 
-4. Done!
+3. Done!
 
 ## Tips
 - Please keep `@flag offset_shift ...` in your pchtxt to help `patch-porter` finding the correct address
@@ -37,8 +31,8 @@ A simple `.pchtxt` porting tool.
 import { promises as fs } from 'fs'
 import { portPchtxt } from 'patch-porter'
 
-let fileA = await fs.readFile('mainA.raw')
-let fileB = await fs.readFile('mainB.raw')
+let fileA = await fs.readFile('mainA')
+let fileB = await fs.readFile('mainB')
 let pchtxtA = await fs.readFile('A.pchtxt', 'utf8')
 
 let pchtxtB = await portPchtxt(fileA, fileB, pchtxtA)

@@ -1,4 +1,5 @@
 import { indexOfAll } from "./lib/fast-index-of-all.mjs"
+import { getNsoSegments, isCompressedNso } from './lib/nso.mjs'
 import { Const, Capstone, loadCapstone } from 'capstone-wasm'
 function dec2hex(number, length) {
   return number.toString(16).padStart(length, '0').toUpperCase()
@@ -37,18 +38,18 @@ const searchModesFast = [
 ]
 
 /**
- * @param {Buffer} buffer NSO file
+ * @param {Uint8Array} buffer NSO file
  * @returns {string} nsobid
  */
 function getNsobid(buffer) {
-  let nsobid = buffer.subarray(0x40, 0x40 + 0x20).toString('hex').toUpperCase()
+  let nsobid = Buffer.from(buffer.subarray(0x40, 0x40 + 0x20)).toString('hex').toUpperCase()
   nsobid = nsobid.replace(/(00)*$/, '')
   return nsobid
 }
 
 /**
- * @param {Buffer} fileOld
- * @param {Buffer} fileNew
+ * @param {Uint8Array} fileOld
+ * @param {Uint8Array} fileNew
  * @param {number} address
  * @param {number} offset
  * @param {object} searchMode
@@ -98,8 +99,8 @@ function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode
 
 /**
  * @param {Capstone | null} capstone
- * @param {Buffer} fileOld
- * @param {Buffer} fileNew
+ * @param {Uint8Array} fileOld
+ * @param {Uint8Array} fileNew
  * @param {number} address
  * @param {object} searchMode
  * @returns {Promise<number | false>} offset
@@ -127,8 +128,8 @@ async function getEstimatedOffset(capstone, fileOld, fileNew, address, searchMod
 
 /**
  * @param {Capstone} capstone 
- * @param {Buffer} fileOld 
- * @param {Buffer} fileNew 
+ * @param {Uint8Array} fileOld 
+ * @param {Uint8Array} fileNew 
  * @param {number} addressOld 
  * @param {number} addressNew 
  * @param {number} start 
@@ -197,7 +198,7 @@ async function getPortConfidenceByInstructions(capstone, fileOld, fileNew, addre
 
 /**
  * @param {Capstone} capstone 
- * @param {Buffer} file 
+ * @param {Uint8Array} file 
  * @param {number} fileAddress 
  * @param {number} capstoneAddress 
  * @returns {Promise<string>} assembly instruction
@@ -222,8 +223,8 @@ async function getInstruction(capstone, file, fileAddress, capstoneAddress) {
 }
 
 /**
- * @param {Buffer} fileOld
- * @param {Buffer} fileNew
+ * @param {Uint8Array} fileOld
+ * @param {Uint8Array} fileNew
  * @param {number} address 
  * @param {Array<object>} searchModesOffset
  * @param {Array<object>} searchModes
@@ -281,9 +282,94 @@ export async function portAddress(fileOld, fileNew, address, searchModesOffset =
   return results.length > 0 ? results[0] : false
 }
 
+async function portNsoAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offset) {
+  if (offset != 0x100) {
+    console.error('Your pchtxt did not set the correct NSO offset (@flag offset_shift 0x100), please disable NSO mode (--no-nso) or fix the pchtxt.')
+    return []
+  }
+  let segmentsNew = getNsoSegments(fileNew)
+  let segmentsOld = getNsoSegments(fileOld)
+
+  let segmentOld
+  let segmentNew
+  let segmentName
+  for (let [_segmentName, _segmentOld] of Object.entries(segmentsOld)) {
+    if (oldAddress >= _segmentOld.start && oldAddress < _segmentOld.end) {
+      segmentOld = _segmentOld
+      segmentNew = segmentsNew[_segmentName]
+      segmentName = _segmentName
+      break
+    }
+  }
+
+  if (!segmentOld || !segmentNew || !segmentName) {
+    console.error(`${oldAddress.toString(16)} is not in a supported segment`)
+    return []
+  }
+
+  let results = []
+
+  let resultA = await portAddress(segmentOld.buffer, segmentNew.buffer, oldAddress - segmentOld.start, null, searchModesDefault, capstone)
+  if (resultA) results.push(resultA)
+
+  let resultB = await portAddress(segmentOld.buffer, segmentNew.buffer, oldAddress - segmentOld.start, searchModesGlobal, searchModesFast, capstone)
+  if (resultB) results.push(resultB)
+
+  results = results.sort((a, b) => b.confidence - a.confidence)
+  
+  if (capstone) {
+    const oldInstructionStr = await getInstruction(capstone, segmentOld.buffer, oldAddress - segmentOld.start, oldAddress)
+    for (let result of results) {
+      result.oldInst = oldInstructionStr
+      result.newInst = await getInstruction(capstone, segmentNew.buffer, result.new, result.new + segmentNew.start)
+    }  
+  }
+
+  if (results.length > 1 && results[1].new == results[0].new) {
+    results.splice(1, 1)
+  }
+
+  // convert addresses back to file address
+  for (let result of results) {
+    result.segmentName = segmentName
+    result.relativeOld = result.old
+    result.relativeNew = result.new
+    result.old += segmentOld.start + offset
+    result.new += segmentNew.start + offset
+  }
+  
+  return results
+}
+
+async function portAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offset) {
+  let results = []
+
+  let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault, capstone)
+  if (resultA) results.push(resultA)
+
+  let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast, capstone)
+  if (resultB) results.push(resultB)
+
+  results = results.sort((a, b) => b.confidence - a.confidence)
+  
+  if (capstone) {
+    const oldInstructionStr = await getInstruction(capstone, fileOld, oldAddress + offset, oldAddress)
+    for (let result of results) {
+      result.oldInst = oldInstructionStr
+      result.newInst = await getInstruction(capstone, fileNew, result.new, result.new - offset)
+    }  
+  }
+
+  if (results.length > 1 && results[1].new == results[0].new) {
+    results.splice(1, 1)
+  }
+
+  return results
+}
+
 /**
- * @param {Buffer} fileOld 
- * @param {Buffer} fileNew 
+ * @param {Buffer | Uint8Array} fileOld 
+ * @param {Buffer | Uint8Array} fileNew 
  * @param {string} pchtxt 
  * @param {object} options 
  * @returns {Promise<string>} pchtxt
@@ -292,6 +378,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
   options = {
     addComment: false,
     arch: 'arm64',
+    nso: true,
     ...options,
   }
   const startTime = Date.now()
@@ -307,6 +394,17 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
     capstone = null
   } else {
     throw new Error(`invalid arch: ${arch}`)
+  }
+
+  if (fileOld instanceof Buffer) {
+    fileOld = new Uint8Array(fileOld)
+  }
+  if (fileNew instanceof Buffer) {
+    fileNew = new Uint8Array(fileNew)
+  }
+
+  if (!options.nso && (isCompressedNso(fileOld) || isCompressedNso(fileNew))) {
+    throw new Error('Your NSO file is compressed, please enable NSO mode (--nso) or decompress the NSO manually.')
   }
 
   try {
@@ -340,31 +438,13 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         const prefix = match.groups.prefix
         const suffix = match.groups.suffix
 
-        let results
-        if (portCache.has(oldAddress + offset)) {
-          results = portCache.get(oldAddress + offset) // may need structuredClone in the future
-        } else {
-          results = []
-          let resultA = await portAddress(fileOld, fileNew, oldAddress + offset, null, searchModesDefault, capstone)
-          if (resultA) results.push(resultA)
-    
-          let resultB = await portAddress(fileOld, fileNew, oldAddress + offset, searchModesGlobal, searchModesFast, capstone)
-          if (resultB) results.push(resultB)
-    
-          results = results.sort((a, b) => b.confidence - a.confidence)
-          
-          if (capstone) {
-            const oldInstructionStr = await getInstruction(capstone, fileOld, oldAddress + offset, oldAddress)
-            for (let result of results) {
-              result.oldInst = oldInstructionStr
-              result.newInst = await getInstruction(capstone, fileNew, result.new, result.new - offset)
-            }  
+        let results = portCache.get(oldAddress + offset) // may need structuredClone in the future
+        if (!results) {
+          if (options.nso) {
+            results = await portNsoAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offset)
+          } else {
+            results = await portAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offset)
           }
-    
-          if (results.length > 1 && results[1].new == results[0].new) {
-            results.splice(1, 1)
-          }
-
           portCache.set(oldAddress + offset, results) // may need structuredClone in the future
         }
   
@@ -375,18 +455,28 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         }
   
         function generateComment(result) {
-          let newAddress = result.new - offset
-          const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
-          const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
-          const newInstStr = result.newInst ? ` (${result.newInst})` : ''
-  
           function formatConfidence(c) {
             if (Math.abs(c % 1) < 0.0000001) {
               return Math.round(c)
             }
             return c.toFixed(2)
           }
-          return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`
+
+          if (result.segmentName) {
+            const oldRelativeAddressStr = dec2hex(result.relativeOld, 0)
+            const newRelativeAddressStr = dec2hex(result.relativeNew, 0)
+            const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
+            const newInstStr = result.newInst ? ` (${result.newInst})` : ''
+    
+            return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} .${result.segmentName}+0x${oldRelativeAddressStr}${oldInstStr} -> .${result.segmentName}+0x${newRelativeAddressStr}${newInstStr}`  
+          } else {
+            let newAddress = result.new - offset
+            const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
+            const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
+            const newInstStr = result.newInst ? ` (${result.newInst})` : ''
+    
+            return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`  
+          }
         }
   
         let newAddress = results[0].new - offset
