@@ -22,8 +22,8 @@ A simple `.pchtxt` porting tool.
 
 ## Tips
 - Please keep `@flag offset_shift ...` in your pchtxt to help `patch-porter` finding the correct address
-- If your pchtct does not contain `@flag offset_shift 0x100`, this means that the addresses in your pchtxt are not based on the NSO header offset.\
-  In this case, you need to decompress your NSO file using [hactool](https://github.com/SciresM/hactool) manually, and set `--no-nso` to disable NSO mode in `patch-porter`.
+- If your pchtxt doesn't have `@flag offset_shift 0x100`, it means that the addresses in your pchtxt are not based on the NSO header offset.\
+  In this case, you need to decompress your NSO file using [hactool](https://github.com/SciresM/hactool), and disable NSO mode in `patch-porter` (`--no-nso`).
 
     ```shell
     hactool -t nso --uncompressed mainA.raw mainA
