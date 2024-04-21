@@ -83,8 +83,8 @@ const argv = yargs
     options.nso = !argv.noNso
   }
 
-  let fileOld = await fs.readFile(argv.from)
-  let fileNew = await fs.readFile(argv.to)
+  let fileOld = new Uint8Array(await fs.readFile(argv.from))
+  let fileNew = new Uint8Array(await fs.readFile(argv.to))
 
   const inputs = Array.isArray(argv.input) ? argv.input : [argv.input]
   const outputs = Array.isArray(argv.output) ? argv.output : [argv.output]
