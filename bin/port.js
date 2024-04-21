@@ -68,10 +68,6 @@ const argv = yargs
     return
   }
 
-  if (argv.noNso == argv.nso) {
-    console.error('Error: Conflict options (--nso and --no-nso).')
-  }
-
   let options = {}
 
   if (argv.comment != null) {
