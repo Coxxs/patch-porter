@@ -1,6 +1,6 @@
 {
   "name": "patch-porter",
-  "version": "0.9.0-alpha.0",
+  "version": "0.9.0-alpha.1",
   "description": ".pchtxt porting tool",
   "main": "port.mjs",
   "bin": {
