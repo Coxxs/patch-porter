@@ -50,7 +50,7 @@ function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode
   if (!Number.isInteger(address)) {
     throw new Error('address must be an integer')
   }
-  const { start, end, length, step, range } = searchMode
+  let { start, end, length, step, range } = searchMode
   if (start == end && step <= 0) {
     step = 1 // prevent infinite loop
   }
@@ -384,7 +384,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
   } else if (options.arch === 'none') {
     capstone = null
   } else {
-    throw new Error(`invalid arch: ${arch}`)
+    throw new Error(`invalid arch: ${options.arch}`)
   }
 
   if (fileOld instanceof Buffer) {
