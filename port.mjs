@@ -1,5 +1,5 @@
 import { indexOfAll } from "./lib/fast-index-of-all.mjs"
-import { getNsoSegments, isCompressedNso } from './lib/nso.mjs'
+import { getNsoSegments, isCompressedNso, getNsobid } from './lib/nso.mjs'
 import { Const, Capstone, loadCapstone } from 'capstone-wasm'
 function dec2hex(number, length) {
   return number.toString(16).padStart(length, '0').toUpperCase()
@@ -37,15 +37,6 @@ const searchModesFast = [
   { start: 64, end: -64, length: 16, step: -4, range: 0x1000 },
 ]
 
-/**
- * @param {Uint8Array} buffer NSO file
- * @returns {string} nsobid
- */
-function getNsobid(buffer) {
-  let nsobid = Buffer.from(buffer.subarray(0x40, 0x40 + 0x20)).toString('hex').toUpperCase()
-  nsobid = nsobid.replace(/(00)*$/, '')
-  return nsobid
-}
 
 /**
  * @param {Uint8Array} fileOld
