@@ -52,4 +52,5 @@ await fs.writeFile('B.pchtxt', pchtxtB)
 
 - [disasm-web](https://github.com/CzBiX/disasm-web)
 - [capstone](https://github.com/capstone-engine/capstone)
+- [keystone](https://github.com/keystone-engine/keystone)
 - [IPSwitch](https://github.com/3096/ipswitch)
