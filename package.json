@@ -4,7 +4,7 @@
   "description": ".pchtxt porting tool",
   "main": "port.mjs",
   "bin": {
-    "patch-porter": "./bin/port.js"
+    "patch-porter": "bin/port.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
