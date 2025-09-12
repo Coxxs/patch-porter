@@ -31,7 +31,7 @@ A simple `.pchtxt` porting tool.
     patch-porter --from=mainA.raw --to=mainB.raw --input=A.pchtxt --output=B.pchtxt --no-nso
     ```
 - After porting, search for `[x]` in new pchtxt to find errors
-- `patch-porter` does not currently update the assembly code, so some patch may still need to be updated manually
+- `patch-porter` will automatically update assembly code for `b` and `bl` instructions, but some patches may still require manual updates
 
 ## Use in Node.js
 

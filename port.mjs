@@ -1,6 +1,7 @@
 import { indexOfAll } from "./lib/fast-index-of-all.mjs"
 import { getNsoSegments, isCompressedNso, getNsobid } from './lib/nso.mjs'
-import { Const, Capstone, loadCapstone } from 'capstone-wasm'
+import { Const as CapstoneConst, Capstone, loadCapstone } from 'capstone-wasm'
+import { Const as KeystoneConst, Keystone, loadKeystone } from 'keystone-wasm'
 function dec2hex(number, length) {
   return number.toString(16).padStart(length, '0').toUpperCase()
 }
@@ -51,6 +52,9 @@ function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode
     throw new Error('address must be an integer')
   }
   let { start, end, length, step, range } = searchMode
+  if (step == 0) {
+    throw new Error('step must not be 0')
+  }
   if (start == end && step <= 0) {
     step = 1 // prevent infinite loop
   }
@@ -273,24 +277,36 @@ export async function portAddress(fileOld, fileNew, address, searchModesOffset =
   return results.length > 0 ? results[0] : false
 }
 
+/**
+ * @param {Uint8Array} file
+ * @param {number} address
+ * @returns {object | null} segmentInfo
+ */
+function getSegmentInfo(file, address) {
+  let segments = getNsoSegments(file)
+  for (let [_segmentName, _segment] of Object.entries(segments)) {
+    if (address >= _segment.start && address < _segment.end) {
+      return { segmentName: _segmentName, segment: _segment }
+    }
+  }
+  return null
+}
+
 async function portNsoAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offset) {
   if (offset != 0x100) {
     console.error('Your pchtxt did not set the correct NSO offset (@flag offset_shift 0x100), please disable NSO mode (--no-nso) or fix the pchtxt.')
     return []
   }
-  let segmentsNew = getNsoSegments(fileNew)
-  let segmentsOld = getNsoSegments(fileOld)
 
   let segmentOld
   let segmentNew
   let segmentName
-  for (let [_segmentName, _segmentOld] of Object.entries(segmentsOld)) {
-    if (oldAddress >= _segmentOld.start && oldAddress < _segmentOld.end) {
-      segmentOld = _segmentOld
-      segmentNew = segmentsNew[_segmentName]
-      segmentName = _segmentName
-      break
-    }
+
+  let segmentInfoOld = getSegmentInfo(fileOld, oldAddress)
+  if (segmentInfoOld) {
+    segmentName = segmentInfoOld.segmentName
+    segmentOld = segmentInfoOld.segment
+    segmentNew = getNsoSegments(fileNew)?.[segmentInfoOld.segmentName]
   }
 
   if (!segmentOld || !segmentNew || !segmentName) {
@@ -359,6 +375,166 @@ async function portAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offse
 }
 
 /**
+ * Ports a patch by updating branch instruction target addresses
+ * @param {Capstone} capstone - Capstone disassembly engine
+ * @param {Keystone} keystone - Keystone assembly engine  
+ * @param {Uint8Array} fileOld - Old NSO file
+ * @param {Uint8Array} fileNew - New NSO file
+ * @param {number} oldAddress - Base address of the patch
+ * @param {number} newAddress - New address of the patch
+ * @param {number} offset - NSO offset (should be 0x100)
+ * @param {Uint8Array} patchOld - Original patch bytes
+ * @returns {Promise<object>} result
+ */
+export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress, newAddress, offset, patchOld) {
+    let comments = []
+    if (offset !== 0x100) {
+    let error = '[x] Your pchtxt did not set the correct NSO offset (@flag offset_shift 0x100), please disable NSO mode (--no-nso) or fix the pchtxt.'
+    comments.push(error)
+    return { patch: patchOld, showComment: true, comments: comments }
+  }
+
+  // Validate input parameters
+  if (!capstone || !keystone) {
+    let error = `[x] Missing capstone or keystone engine`
+    comments.push(error)
+    return { patch: patchOld, showComment: true, comments: comments }
+  }
+
+  const patchOldHex = Buffer.from(patchOld).toString('hex').toUpperCase()
+
+  // Create a copy of the original patch as starting point
+  const patchNew = new Uint8Array(patchOld.length)
+  patchNew.set(patchOld)
+
+
+  if (patchOld.length % 4 !== 0) {
+    let error = `[x] Patch length (${patchOld.length}) not aligned with 4: ${patchOldHex}`
+    comments.push(error)
+    return { patch: patchOld, showComment: true, comments: comments }
+  }
+
+  let insns
+  try {
+    insns = capstone.disasm(patchOld, { address: oldAddress })
+  } catch (err) {
+    let error = `[x] Patch disasm error: ${err} (${patchOldHex})`
+    comments.push(error)
+    return { patch: patchOld, showComment: true, comments: comments }
+  }
+
+  if (insns.length !== Math.floor(patchOld.length / 4)) {
+    let error = `[x] Patch instruction count mismatch: ${insns.length} != ${Math.floor(patchOld.length / 4)} (${patchOldHex})`
+    comments.push(error)
+    return { patch: patchOld, showComment: true, comments: comments }
+  }
+
+  let showComment = false
+  for (let i = 0; i < insns.length; i++) {
+    let insn = insns[i]
+    let oldInsnHex = Buffer.from(insn.bytes).toString('hex').toUpperCase()
+    
+    if (['bl', 'b'].includes(insn.mnemonic) && insn.opStr.startsWith('#')) {
+      // Extract the target address from the instruction
+      let targetAddress
+      const opStr = insn.opStr.trim()
+
+      if (opStr.startsWith('#0x')) {
+        const targetAddressStr = opStr.substring(3)
+        targetAddress = parseInt(targetAddressStr, 16)
+      } else if (opStr.startsWith('#')) {
+        const targetAddressStr = opStr.substring(1)
+        targetAddress = parseInt(targetAddressStr, 16)
+      } else {
+        let error = `[x] Unsupported operand format: ${oldInsnHex} (${insn.mnemonic} ${insn.opStr})`
+        comments.push(error)
+        continue
+      }
+      
+      // Port the target address to find its new location
+      const results = await portNsoAddressAndCheck(capstone, fileOld, fileNew, targetAddress, offset)
+
+      if (results.length <= 0) {
+        let error = `[x] Failed to port ${oldInsnHex} (${insn.mnemonic} ${insn.opStr})`
+        comments.push(error)
+        continue
+      }
+
+      let replaced = false
+
+      for (let r of results) {
+        const newTargetAddress = r.new - offset
+        // Create the new instruction with the updated target address
+        const newInstruction = `${insn.mnemonic} #0x${newTargetAddress.toString(16)}`
+  
+        let newInsnHex = ''
+        try {
+          const assembled = keystone.asm(newInstruction, { address: newAddress + i * 4 })
+          if (assembled && assembled.length === 4) {
+            if (!replaced) {
+              patchNew.set(assembled, i * 4)
+              replaced = true
+            }
+            newInsnHex = Buffer.from(assembled).toString('hex').toUpperCase()
+          } else {
+            let error = `[x] Assembly failed or wrong length: expected 4 bytes, got ${assembled ? assembled.length : 'null'}`
+            comments.push(error)
+            console.log(error)
+            showComment = true
+            continue
+          }
+        } catch (err) {
+          let error = `[x] Failed to assemble instruction "${newInstruction}": ${err}`
+          comments.push(error)
+          console.log(error)
+          showComment = true
+          continue
+        }
+  
+        let comment = `${oldInsnHex} (${insn.mnemonic} ${insn.opStr}) -> ${newInsnHex} (${newInstruction}) ${generateComment(offset, dec2hex(oldAddress + i * 4, 8), r)}`
+        if (r == results[0]) {
+          if (r.confidence < 0.8) {
+            showComment = true
+          }
+          comments.push(`${r.confidence >= 0.3 ? '[ok]' : '[x]'} ${comment}`)
+        } else {
+          showComment = true
+          comments.push(`| ${comment}`)
+        }
+        console.log(`Patch updated: ${comment}`)
+      }
+    }
+  }
+  
+  return { patch: patchNew, showComment: showComment, comments: comments }
+}
+
+function generateComment(offset, oldAddressStr, result) {
+  function formatConfidence(c) {
+    if (Math.abs(c % 1) < 0.0000001) {
+      return Math.round(c)
+    }
+    return c.toFixed(2)
+  }
+
+  if (result.segmentName) {
+    const oldRelativeAddressStr = dec2hex(result.relativeOld, 0)
+    const newRelativeAddressStr = dec2hex(result.relativeNew, 0)
+    const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
+    const newInstStr = result.newInst ? ` (${result.newInst})` : ''
+
+    return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} .${result.segmentName}+0x${oldRelativeAddressStr}${oldInstStr} -> .${result.segmentName}+0x${newRelativeAddressStr}${newInstStr}`  
+  } else {
+    let newAddress = result.new - offset
+    const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
+    const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
+    const newInstStr = result.newInst ? ` (${result.newInst})` : ''
+
+    return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`  
+  }
+}
+
+/**
  * @param {Buffer | Uint8Array} fileOld 
  * @param {Buffer | Uint8Array} fileNew 
  * @param {string} pchtxt 
@@ -375,14 +551,20 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
   const startTime = Date.now()
 
   let capstone
+  let keystone
   if (options.arch === 'arm') {
     await loadCapstone()
-    capstone = new Capstone(Const.CS_ARCH_ARM, Const.CS_MODE_ARM)
+    await loadKeystone()
+    capstone = new Capstone(CapstoneConst.CS_ARCH_ARM, CapstoneConst.CS_MODE_ARM)
+    keystone = new Keystone(KeystoneConst.KS_ARCH_ARM, KeystoneConst.KS_MODE_ARM)
   } else if (options.arch === 'arm64') {
     await loadCapstone()
-    capstone = new Capstone(Const.CS_ARCH_ARM64, Const.CS_MODE_ARM)
+    await loadKeystone()
+    capstone = new Capstone(CapstoneConst.CS_ARCH_ARM64, CapstoneConst.CS_MODE_ARM)
+    keystone = new Keystone(KeystoneConst.KS_ARCH_ARM64, KeystoneConst.KS_MODE_LITTLE_ENDIAN)
   } else if (options.arch === 'none') {
     capstone = null
+    keystone = null
   } else {
     throw new Error(`invalid arch: ${options.arch}`)
   }
@@ -423,11 +605,12 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         continue
       }
   
-      if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s(?<suffix>.+)$/)) {
+      if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s+(?<suffix>.+)$/)) {
         const oldAddressStr = match.groups.address
         const oldAddress = parseInt(oldAddressStr, 16)
         const prefix = match.groups.prefix
-        const suffix = match.groups.suffix
+        let suffix = match.groups.suffix
+        let segmentInfoOld
 
         let results = portCache.get(oldAddress + offset) // may need structuredClone in the future
         if (!results) {
@@ -441,42 +624,47 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
   
         if (results.length <= 0) {
           console.error(`Failed to find new address for ${oldAddressStr}`)
-          output.push(`${line} // [x] 0x${oldAddressStr} -> Failed`)
-          continue
-        }
-  
-        function generateComment(result) {
-          function formatConfidence(c) {
-            if (Math.abs(c % 1) < 0.0000001) {
-              return Math.round(c)
-            }
-            return c.toFixed(2)
-          }
-
-          if (result.segmentName) {
-            const oldRelativeAddressStr = dec2hex(result.relativeOld, 0)
-            const newRelativeAddressStr = dec2hex(result.relativeNew, 0)
-            const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
-            const newInstStr = result.newInst ? ` (${result.newInst})` : ''
-    
-            return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} .${result.segmentName}+0x${oldRelativeAddressStr}${oldInstStr} -> .${result.segmentName}+0x${newRelativeAddressStr}${newInstStr}`  
+          if (segmentInfoOld) {
+            let oldRelativeAddressStr = dec2hex(oldAddress - segmentInfoOld.segment.start, 0)
+            output.push(`${line} // [x] .${segmentInfoOld.segmentName}+0x${oldRelativeAddressStr} -> Failed`)
           } else {
-            let newAddress = result.new - offset
-            const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
-            const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
-            const newInstStr = result.newInst ? ` (${result.newInst})` : ''
-    
-            return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`  
+            output.push(`${line} // [x] 0x${oldAddressStr} -> Failed`)
           }
+          continue
         }
   
         let newAddress = results[0].new - offset
         const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
-        console.log(`Address updated: ${results.map(r => generateComment(r)).join(' | ')}`)
+        console.log(`Address updated: ${results.map(r => generateComment(offset, oldAddressStr, r)).join(' | ')}`)
+
+        let showExtraComment = false
+        let extraComments = null
+        if (options.nso && offset == 0x100 && oldAddress % 4 === 0) {
+          segmentInfoOld = getSegmentInfo(fileOld, oldAddress)
+          let patchMatch = suffix.match(/^(?<patch>[0-9a-fA-F]{2,})(?<comment>.*)$/)
+
+          if (patchMatch && segmentInfoOld && segmentInfoOld.segmentName === 'text' && patchMatch.groups.patch.length % 2 == 0) {
+            const patchOldStr = patchMatch.groups.patch
+            const comment = patchMatch.groups.comment
+            const patchOld = Buffer.from(patchOldStr, 'hex')
+
+            if (patchOld.length % 4 === 0) {
+              const patchNew = await portPatch(capstone, keystone, fileOld, fileNew, oldAddress, newAddress, offset, patchOld)
+              const patchNewStr = Buffer.from(patchNew.patch).toString('hex').toUpperCase()
+              suffix = patchNewStr + comment
+              extraComments = patchNew.comments
+              showExtraComment = patchNew.showComment
+            }
+          }
+        }
+
         if (options.addComment || results[0].confidence < 0.8 || results.length > 1) {
-          output.push(`${prefix}${newAddressStr} ${suffix} // ${results[0].confidence >= 0.3 ? '[P]' : '[x]'} ${results.map(r => generateComment(r)).join(' | ')}`)
+          output.push(`${prefix}${newAddressStr} ${suffix} // ${results[0].confidence >= 0.3 ? '[ok]' : '[x]'} ${results.map(r => generateComment(offset, oldAddressStr, r)).join(' | ')}`)
         } else {
           output.push(`${prefix}${newAddressStr} ${suffix}`)
+        }
+        if ((options.addComment || showExtraComment) && extraComments) {
+          output.push(...(extraComments.map(c => '// ^ ' + c)))
         }
         continue
       }
@@ -489,5 +677,6 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
     return output.join('\n')  
   } finally {
     if (capstone) capstone.close()
+    if (keystone) keystone.close()
   }
 }

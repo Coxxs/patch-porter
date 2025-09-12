@@ -105,3 +105,4 @@ dist
 
 private/
 *.pchtxt
+test.mjs
