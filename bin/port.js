@@ -1,9 +1,10 @@
 #! /usr/bin/env node
 const { existsSync } = require('fs');
-const yargs = require('yargs')
+const yargs = require('yargs/yargs')
+const { hideBin } = require('yargs/helpers')
 const fs = require('fs').promises
 
-const argv = yargs
+const argv = yargs(hideBin(process.argv))
   .option('from', {
     description: 'The decompressed NSO file to port from',
     type: 'string',
