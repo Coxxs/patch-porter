@@ -612,6 +612,10 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         let suffix = match.groups.suffix
         let segmentInfoOld
 
+        if (options.nso && offset == 0x100) {
+          segmentInfoOld = getSegmentInfo(fileOld, oldAddress)
+        }
+
         let results = portCache.get(oldAddress + offset) // may need structuredClone in the future
         if (!results) {
           if (options.nso) {
@@ -637,10 +641,10 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
         console.log(`Address updated: ${results.map(r => generateComment(offset, oldAddressStr, r)).join(' | ')}`)
 
+        // Port patch
         let showExtraComment = false
         let extraComments = null
-        if (options.nso && offset == 0x100 && oldAddress % 4 === 0) {
-          segmentInfoOld = getSegmentInfo(fileOld, oldAddress)
+        if (options.nso && capstone && keystone && offset == 0x100 && oldAddress % 4 === 0) {
           let patchMatch = suffix.match(/^(?<patch>[0-9a-fA-F]{2,})(?<comment>.*)$/)
 
           if (patchMatch && segmentInfoOld && segmentInfoOld.segmentName === 'text' && patchMatch.groups.patch.length % 2 == 0) {
