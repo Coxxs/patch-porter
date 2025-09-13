@@ -116,19 +116,19 @@ async function getEstimatedOffset(capstone, fileOld, fileNew, address, searchMod
     let confidence = await getPortConfidenceByInstructions(capstone, fileOld, fileNew, address, address + median)
     if (confidence > 0.7) {
       return median
-    }  
+    }
   }
   return false
 }
 
 /**
- * @param {Capstone} capstone 
- * @param {Uint8Array} fileOld 
- * @param {Uint8Array} fileNew 
- * @param {number} addressOld 
- * @param {number} addressNew 
- * @param {number} start 
- * @param {number} end 
+ * @param {Capstone} capstone
+ * @param {Uint8Array} fileOld
+ * @param {Uint8Array} fileNew
+ * @param {number} addressOld
+ * @param {number} addressNew
+ * @param {number} start
+ * @param {number} end
  * @returns {Promise<number>} confidence
  */
 async function getPortConfidenceByInstructions(capstone, fileOld, fileNew, addressOld, addressNew, start = -16, end = 16) {
@@ -192,10 +192,10 @@ async function getPortConfidenceByInstructions(capstone, fileOld, fileNew, addre
 }
 
 /**
- * @param {Capstone} capstone 
- * @param {Uint8Array} file 
- * @param {number} fileAddress 
- * @param {number} capstoneAddress 
+ * @param {Capstone} capstone
+ * @param {Uint8Array} file
+ * @param {number} fileAddress
+ * @param {number} capstoneAddress
  * @returns {Promise<string>} assembly instruction
  */
 async function getInstruction(capstone, file, fileAddress, capstoneAddress) {
@@ -220,7 +220,7 @@ async function getInstruction(capstone, file, fileAddress, capstoneAddress) {
 /**
  * @param {Uint8Array} fileOld
  * @param {Uint8Array} fileNew
- * @param {number} address 
+ * @param {number} address
  * @param {Array<object>} searchModesOffset
  * @param {Array<object>} searchModes
  * @param {Capstone | null} capstone
@@ -238,7 +238,7 @@ export async function portAddress(fileOld, fileNew, address, searchModesOffset =
       if (estimatedOffset !== false) break
     }
     // console.log(`Estimated offset: ${estimatedOffset}`)
-    if (estimatedOffset === false) return false  
+    if (estimatedOffset === false) return false
   } else {
     estimatedOffset = 0
   }
@@ -323,13 +323,13 @@ async function portNsoAddressAndCheck(capstone, fileOld, fileNew, oldAddress, of
   if (resultB) results.push(resultB)
 
   results = results.sort((a, b) => b.confidence - a.confidence)
-  
+
   if (capstone) {
     const oldInstructionStr = await getInstruction(capstone, segmentOld.buffer, oldAddress - segmentOld.start, oldAddress)
     for (let result of results) {
       result.oldInst = oldInstructionStr
       result.newInst = await getInstruction(capstone, segmentNew.buffer, result.new, result.new + segmentNew.start)
-    }  
+    }
   }
 
   if (results.length > 1 && results[1].new == results[0].new) {
@@ -344,7 +344,7 @@ async function portNsoAddressAndCheck(capstone, fileOld, fileNew, oldAddress, of
     result.old += segmentOld.start + offset
     result.new += segmentNew.start + offset
   }
-  
+
   return results
 }
 
@@ -358,13 +358,13 @@ async function portAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offse
   if (resultB) results.push(resultB)
 
   results = results.sort((a, b) => b.confidence - a.confidence)
-  
+
   if (capstone) {
     const oldInstructionStr = await getInstruction(capstone, fileOld, oldAddress + offset, oldAddress)
     for (let result of results) {
       result.oldInst = oldInstructionStr
       result.newInst = await getInstruction(capstone, fileNew, result.new, result.new - offset)
-    }  
+    }
   }
 
   if (results.length > 1 && results[1].new == results[0].new) {
@@ -377,7 +377,7 @@ async function portAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offse
 /**
  * Ports a patch by updating branch instruction target addresses
  * @param {Capstone} capstone - Capstone disassembly engine
- * @param {Keystone} keystone - Keystone assembly engine  
+ * @param {Keystone} keystone - Keystone assembly engine
  * @param {Uint8Array} fileOld - Old NSO file
  * @param {Uint8Array} fileNew - New NSO file
  * @param {number} oldAddress - Base address of the patch
@@ -433,7 +433,7 @@ export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress
   for (let i = 0; i < insns.length; i++) {
     let insn = insns[i]
     let oldInsnHex = Buffer.from(insn.bytes).toString('hex').toUpperCase()
-    
+
     if (['bl', 'b'].includes(insn.mnemonic) && insn.opStr.startsWith('#')) {
       // Extract the target address from the instruction
       let targetAddress
@@ -450,7 +450,7 @@ export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress
         comments.push(error)
         continue
       }
-      
+
       // Port the target address to find its new location
       const results = await portNsoAddressAndCheck(capstone, fileOld, fileNew, targetAddress, offset)
 
@@ -466,7 +466,7 @@ export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress
         const newTargetAddress = r.new - offset
         // Create the new instruction with the updated target address
         const newInstruction = `${insn.mnemonic} #0x${newTargetAddress.toString(16)}`
-  
+
         let newInsnHex = ''
         try {
           const assembled = keystone.asm(newInstruction, { address: newAddress + i * 4 })
@@ -490,7 +490,7 @@ export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress
           showComment = true
           continue
         }
-  
+
         let comment = `${oldInsnHex} (${insn.mnemonic} ${insn.opStr}) -> ${newInsnHex} (${newInstruction}) ${generateComment(offset, dec2hex(oldAddress + i * 4, 8), r)}`
         if (r == results[0]) {
           if (r.confidence < 0.8) {
@@ -505,7 +505,7 @@ export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress
       }
     }
   }
-  
+
   return { patch: patchNew, showComment: showComment, comments: comments }
 }
 
@@ -523,22 +523,22 @@ function generateComment(offset, oldAddressStr, result) {
     const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
     const newInstStr = result.newInst ? ` (${result.newInst})` : ''
 
-    return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} .${result.segmentName}+0x${oldRelativeAddressStr}${oldInstStr} -> .${result.segmentName}+0x${newRelativeAddressStr}${newInstStr}`  
+    return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} .${result.segmentName}+0x${oldRelativeAddressStr}${oldInstStr} -> .${result.segmentName}+0x${newRelativeAddressStr}${newInstStr}`
   } else {
     let newAddress = result.new - offset
     const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
     const oldInstStr = result.oldInst ? ` (${result.oldInst})` : ''
     const newInstStr = result.newInst ? ` (${result.newInst})` : ''
 
-    return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`  
+    return `${result.delta > 0 ? '+' : ''}${result.delta} C=${formatConfidence(result.confidence)} 0x${oldAddressStr}${oldInstStr} -> 0x${newAddressStr}${newInstStr}`
   }
 }
 
 /**
- * @param {Buffer | Uint8Array} fileOld 
- * @param {Buffer | Uint8Array} fileNew 
- * @param {string} pchtxt 
- * @param {object} options 
+ * @param {Buffer | Uint8Array} fileOld
+ * @param {Buffer | Uint8Array} fileNew
+ * @param {string} pchtxt
+ * @param {object} options
  * @returns {Promise<string>} pchtxt
  */
 export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
@@ -584,7 +584,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
     const lines = pchtxt.replaceAll('\r\n', '\n').split('\n')
     const output = []
     const portCache = new Map()
-  
+
     let offset = 0
     for (const line of lines) {
       let match
@@ -598,13 +598,13 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         output.push(`@nsobid-${newNsobid}`)
         continue
       }
-  
+
       if (match = line.match(/^@flag\s+offset_shift\s+0x(?<offset>[0-9a-fA-F]+)\s*$/)) {
         offset = parseInt(match.groups.offset, 16)
         output.push(line)
         continue
       }
-  
+
       if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s+(?<suffix>.+)$/)) {
         const oldAddressStr = match.groups.address
         const oldAddress = parseInt(oldAddressStr, 16)
@@ -625,7 +625,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
           }
           portCache.set(oldAddress + offset, results) // may need structuredClone in the future
         }
-  
+
         if (results.length <= 0) {
           console.error(`Failed to find new address for ${oldAddressStr}`)
           if (segmentInfoOld) {
@@ -636,7 +636,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
           }
           continue
         }
-  
+
         let newAddress = results[0].new - offset
         const newAddressStr = dec2hex(newAddress, oldAddressStr.length)
         console.log(`Address updated: ${results.map(r => generateComment(offset, oldAddressStr, r)).join(' | ')}`)
@@ -672,13 +672,13 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         }
         continue
       }
-  
+
       output.push(line)
     }
-  
-  
+
+
     console.log(`Finished in ${(Date.now() - startTime) / 1000}s.`)
-    return output.join('\n')  
+    return output.join('\n')
   } finally {
     if (capstone) capstone.close()
     if (keystone) keystone.close()
