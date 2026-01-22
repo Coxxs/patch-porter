@@ -1,4 +1,4 @@
-import { indexOfAll } from "./lib/fast-index-of-all.mjs"
+import { indexOfAll } from "./lib/fast-index-of-all-wasm.mjs"
 import { getNsoSegments, isCompressedNso, getNsobid } from './lib/nso.mjs'
 import { Const as CapstoneConst, Capstone, loadCapstone } from 'capstone-wasm'
 import { Const as KeystoneConst, Keystone, loadKeystone } from 'keystone-wasm'
@@ -45,9 +45,9 @@ const searchModesFast = [
  * @param {number} address
  * @param {number} offset
  * @param {object} searchMode
- * @returns {Array<object>} results
+ * @returns {Promise<Array<object>>} results
  */
-function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode = searchModesDefault[0]) {
+async function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode = searchModesDefault[0]) {
   if (!Number.isInteger(address)) {
     throw new Error('address must be an integer')
   }
@@ -81,7 +81,7 @@ function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode
   for (let i = start; start > end ? i >= end : i <= end ; i += step) {
     const ptr = address + i
     const data = fileOld.subarray(ptr, ptr + length)
-    const indexs = indexOfAll(fileNew, data, startOffset, endOffset, 2)
+    const indexs = await indexOfAll(fileNew, data, startOffset, endOffset, 2)
     if (indexs.length == 0) continue
     if (indexs.length > 1) continue
     const index = indexs[0]
@@ -101,7 +101,7 @@ function portAddressSearchMode(fileOld, fileNew, address, offset = 0, searchMode
  * @returns {Promise<number | false>} offset
  */
 async function getEstimatedOffset(capstone, fileOld, fileNew, address, searchMode = searchModesGlobal[0]) {
-  const results = portAddressSearchMode(fileOld, fileNew, address, 0, searchMode)
+  const results = await portAddressSearchMode(fileOld, fileNew, address, 0, searchMode)
   // console.log(`Estimating offset with search mode ${JSON.stringify(searchMode)}, results ${JSON.stringify(results)}`)
   if (results.length == 0) return false
 
@@ -245,7 +245,7 @@ export async function portAddress(fileOld, fileNew, address, searchModesOffset =
 
   let results = []
   for (const searchMode of searchModes) {
-    const searchResults = portAddressSearchMode(fileOld, fileNew, address, estimatedOffset, searchMode)
+    const searchResults = await portAddressSearchMode(fileOld, fileNew, address, estimatedOffset, searchMode)
     // console.log(`Search mode ${JSON.stringify(searchMode)}, results ${JSON.stringify(results)}`)
     if (searchResults.length == 0) continue
     const deltas = searchResults.map(r => r.delta)
@@ -387,8 +387,8 @@ async function portAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offse
  * @returns {Promise<object>} result
  */
 export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress, newAddress, offset, patchOld) {
-    let comments = []
-    if (offset !== 0x100) {
+  let comments = []
+  if (offset !== 0x100) {
     let error = '[x] Your pchtxt did not set the correct NSO offset (@flag offset_shift 0x100), please disable NSO mode (--no-nso) or fix the pchtxt.'
     comments.push(error)
     return { patch: patchOld, showComment: true, comments: comments }
