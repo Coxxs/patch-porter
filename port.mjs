@@ -639,7 +639,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         continue
       }
 
-      if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s*(?<suffix>.+)$/)) {
+      if (match = line.match(/^(?<prefix>(?:\/\/\s*)?)(?<address>[0-9a-fA-F]{8})(?:\s+(?<suffix>.*))?$/)) {
         const oldAddressStr = match.groups.address
         const oldAddress = parseInt(oldAddressStr, 16)
         const prefix = match.groups.prefix
