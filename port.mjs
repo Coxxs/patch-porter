@@ -643,7 +643,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         const oldAddressStr = match.groups.address
         const oldAddress = parseInt(oldAddressStr, 16)
         const prefix = match.groups.prefix
-        let suffix = match.groups.suffix
+        let suffix = match.groups.suffix || ''
         let segmentInfoOld
 
         if (options.nso && offset == 0x100) {
