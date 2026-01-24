@@ -653,6 +653,9 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         let results = portCache.get(oldAddress + offset) // may need structuredClone in the future
         if (!results) {
           if (options.nso) {
+            if (offset != 0x100) {
+              throw new Error('Your pchtxt did not set the correct NSO offset (@flag offset_shift 0x100), please disable NSO mode (--no-nso) or fix the pchtxt.')
+            }
             results = await portNsoAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offset)
           } else {
             results = await portAddressAndCheck(capstone, fileOld, fileNew, oldAddress, offset)
