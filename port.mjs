@@ -1,7 +1,8 @@
-import { indexOfAll } from "./lib/fast-index-of-all-wasm.mjs"
+import { indexOfAll, prepareIndex as prepareIndexOfAll } from "./lib/fast-index-of-all-wasm.mjs"
 import { getNsoSegments, isCompressedNso, getNsobid } from './lib/nso.mjs'
 import { Const as CapstoneConst, Capstone, loadCapstone } from 'capstone-wasm'
 import { Const as KeystoneConst, Keystone, loadKeystone } from 'keystone-wasm'
+import { toHex, fromHex, compare } from './lib/buffer-utils.mjs'
 function dec2hex(number, length) {
   return number.toString(16).padStart(length, '0').toUpperCase()
 }
@@ -160,7 +161,7 @@ async function getPortConfidenceByInstructions(capstone, fileOld, fileNew, addre
 
     let confidence = 0
     if (insnsOld instanceof Error || insnsNew instanceof Error) {
-      if (Buffer.compare(dataOld, dataNew) === 0) {
+      if (compare(dataOld, dataNew) === 0) {
         confidence = 1
       } else if (insnsOld instanceof Error && insnsNew instanceof Error) {
         confidence = 0.1
@@ -401,7 +402,7 @@ export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress
     return { patch: patchOld, showComment: true, comments: comments }
   }
 
-  const patchOldHex = Buffer.from(patchOld).toString('hex').toUpperCase()
+  const patchOldHex = toHex(patchOld)
 
   // Create a copy of the original patch as starting point
   const patchNew = new Uint8Array(patchOld.length)
@@ -432,7 +433,7 @@ export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress
   let showComment = false
   for (let i = 0; i < insns.length; i++) {
     let insn = insns[i]
-    let oldInsnHex = Buffer.from(insn.bytes).toString('hex').toUpperCase()
+    let oldInsnHex = toHex(insn.bytes)
 
     if (['bl', 'b'].includes(insn.mnemonic) && insn.opStr.startsWith('#')) {
       // Extract the target address from the instruction
@@ -475,7 +476,7 @@ export async function portPatch(capstone, keystone, fileOld, fileNew, oldAddress
               patchNew.set(assembled, i * 4)
               replaced = true
             }
-            newInsnHex = Buffer.from(assembled).toString('hex').toUpperCase()
+            newInsnHex = toHex(assembled)
           } else {
             let error = `[x] Assembly failed or wrong length: expected 4 bytes, got ${assembled ? assembled.length : 'null'}`
             comments.push(error)
@@ -535,8 +536,41 @@ function generateComment(offset, oldAddressStr, result) {
 }
 
 /**
- * @param {Buffer | Uint8Array} fileOld
- * @param {Buffer | Uint8Array} fileNew
+ * Prepare index early for faster search, calling this function is optional
+ * @param {Uint8Array} fileOld
+ * @returns {Promise<void>}
+ */
+export async function prepareIndexForFileOld(fileOld) {
+  try {
+    getNsoSegments(fileOld)
+  } catch (err) {
+    console.error(err)
+  }
+  return
+}
+
+/**
+ * Prepare index early for faster search, calling this function is optional
+ * @param {Uint8Array} fileNew
+ * @returns {Promise<void>}
+ */
+export async function prepareIndexForFileNew(fileNew) {
+  try {
+    const segments = getNsoSegments(fileNew)
+    let promises = []
+    promises.push(prepareIndexOfAll(segments.text.buffer))
+    promises.push(prepareIndexOfAll(segments.rodata.buffer))
+    promises.push(prepareIndexOfAll(segments.data.buffer))
+    await Promise.all(promises)
+  } catch (err) {
+    console.error(err)
+  }
+  return
+}
+
+/**
+ * @param {Uint8Array} fileOld
+ * @param {Uint8Array} fileNew
  * @param {string} pchtxt
  * @param {object} options
  * @returns {Promise<string>} pchtxt
@@ -569,11 +603,11 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
     throw new Error(`invalid arch: ${options.arch}`)
   }
 
-  if (fileOld instanceof Buffer) {
-    fileOld = new Uint8Array(fileOld)
+  if (!(fileOld instanceof Uint8Array)) {
+    throw new Error('fileOld must be Uint8Array')
   }
-  if (fileNew instanceof Buffer) {
-    fileNew = new Uint8Array(fileNew)
+  if (!(fileNew instanceof Uint8Array)) {
+    throw new Error('fileNew must be Uint8Array')
   }
 
   if (!options.nso && (isCompressedNso(fileOld) || isCompressedNso(fileNew))) {
@@ -605,7 +639,7 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
         continue
       }
 
-      if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s+(?<suffix>.+)$/)) {
+      if (match = line.match(/^(?<prefix>(?:\/\/\s+)?)(?<address>[0-9a-fA-F]{4,10})\s*(?<suffix>.+)$/)) {
         const oldAddressStr = match.groups.address
         const oldAddress = parseInt(oldAddressStr, 16)
         const prefix = match.groups.prefix
@@ -650,11 +684,11 @@ export async function portPchtxt(fileOld, fileNew, pchtxt, options) {
           if (patchMatch && segmentInfoOld && segmentInfoOld.segmentName === 'text' && patchMatch.groups.patch.length % 2 == 0) {
             const patchOldStr = patchMatch.groups.patch
             const comment = patchMatch.groups.comment
-            const patchOld = Buffer.from(patchOldStr, 'hex')
+            const patchOld = fromHex(patchOldStr)
 
             if (patchOld.length % 4 === 0) {
               const patchNew = await portPatch(capstone, keystone, fileOld, fileNew, oldAddress, newAddress, offset, patchOld)
-              const patchNewStr = Buffer.from(patchNew.patch).toString('hex').toUpperCase()
+              const patchNewStr = toHex(patchNew.patch)
               suffix = patchNewStr + comment
               extraComments = patchNew.comments
               showExtraComment = patchNew.showComment
